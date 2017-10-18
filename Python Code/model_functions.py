@@ -10,18 +10,16 @@ import mysql.connector
 # State variable functions - A_0, miu_A, sigma and miu_delta
 ########################################################################################################################
 
-def big_a_0(delta_0, miu_big_a, g):
+def big_a_0(delta_0, miu_big_a,):
     """
-    The value of a security A_t at the beginning of the process is given by this function.
+    The value of a security A_t at the beginning of the process is given by the function A0 = delta_0 / (miu_A - g).
+    Where g = miu_delta - (lambda*jump), with jump being equal to 0 g = miu_delta.
 
     :param delta_0: the value of EBITDA;
     :param miu_A: the discount rate, assumed to be constant for mathematical tractability;
-    :param g: the expected CFO growth rate, g = miu_delta - lambda * jump, but we ignore jumps so g is simply miu_delta.
     """
-    # g can't be both an input and calculated in the formula but not sure which is right
 
-    assets = delta_0 / (miu_big_a - g)
-
+    assets = delta_0 / (miu_big_a - miu_delta())
 
     return assets
 
@@ -299,8 +297,8 @@ def h1(z, s):
     """
     Standard normal distribution inputs.
 
-    :param z: input specified by the securities
-    :param s: time s
+    :param z: input specified by security formula
+    :param s: time denoted as s
     :return: value for h1 to be used in standard normal distribution and standard normal density
 
     """
@@ -315,36 +313,41 @@ def h1(z, s):
 
 def h2(z, s):
     """
+    Standard normal distribution inputs.
 
-     :param z:
-     :param s:
-     :return: value for h2 to be used in standard normal distribution and standard normal density
+    :param z: input specified by security formula
+    :param s: time denoted as s
+    :return: value for h1 to be used in standard normal distribution and standard normal density
 
-     """
-    output_h2 = (np.log(big_r()*(v_bar()/z)) + v_star()* s) / (sigma() * np.sqrt(s))
+    """
+    output_h2 = (np.log(big_r() * (v_bar() / z)) + v_star() * s) / (sigma() * np.sqrt(s))
 
     return output_h2
 
 
 def h3(z, s):
     """
+    Standard normal distribution inputs.
 
-     :param z:
-     :param s:
-     :return:
+    :param z: input specified by security formula
+    :param s: time denoted as s
+    :return: value for h3 to be used in standard normal distribution and standard normal density
+    """
 
-     """
+    output_h3 = (np.log(z / big_a_0()) - (v_star() + sigma() ** 2) * s) / (sigma() * np.sqrt(s))
 
-    return
+    return output_h3
 
 
 def h4(z, s):
     """
+    Standard normal distribution inputs.
 
-     :param z:
-     :param s:
-     :return:
+    :param z: input specified by security formula
+    :param s: time denoted as s
+    :return: value for h4 to be used in standard normal distribution and standard normal density
+    """
 
-     """
+    output_h4 = (np.log((big_r() * (v_bar() / z))) + (v_star() + sigma() ** 2) * s) / (sigma() * np.sqrt(s))
 
-    return
+    return output_h4
