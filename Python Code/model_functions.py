@@ -7,7 +7,7 @@ import numpy as np
 import mysql.connector
 
 ########################################################################################################################
-# State variable functions - A_0, miu_A, sigma
+# State variable functions - A_0, miu_A, sigma and miu_delta
 ########################################################################################################################
 
 def big_a_0(delta_0, miu_big_a, g):
@@ -26,7 +26,7 @@ def big_a_0(delta_0, miu_big_a, g):
     return assets
 
 
-def miu_big_a(r, m_bar, sigma):
+def miu_big_a(r, m_bar):
     """
     The discount rate, assumed to be constant
 
@@ -36,22 +36,22 @@ def miu_big_a(r, m_bar, sigma):
     # do we hardcode a discount rate or how do we calculate it?
     # Email said to take parameter as arg but also to code the function?
 
-    discount = r + m_bar * sigma
+    discount = r + m_bar * sigma()
 
     return discount
 
 
-def sigma():
+def miu_delta():
     """
-    Queries data from mySQL database to find the unique values of gvkey and adds to list,
-    Queries EBITDA data based on unique values, calculates lognormal return on EBITDA and then the standard deviation.
+    Instantaneous growth rate of the firm. Essentially the historical growth rate of the state variable,
+    which is EBITDA in our model. We query the data from the MySQL database and create a list of growth rates per firm.
 
-    :return: The sigma estimate based on lognormal return of EBITDA
+    :return: List of lists containing the historical growth rate of each of the firms based on their EBITDA.
     """
 
     # Connect to database and create cursor object
     cnx = mysql.connector.connect(user='root', password='',
-                                  host='127.0.0.1', database='msc_data')
+                                  host='localhost', database='msc_data')
 
     # Create two cursors to execute commands, one is buffered to allow fetching entire result set for each loop
     cursor = cnx.cursor()
@@ -68,23 +68,100 @@ def sigma():
     # Create empty list to append lists filled with EBITDA data from database
     l = []
 
-    # Loop goes through the total number of gvkeys and adds them into the SQL query
+    # Loops through the total number of gvkeys and adds them into the MySQL query
     for i in range(len(keys)):
         k = keys[i]
         e_gvkey = ("SELECT ebitda FROM na_data WHERE ebitda > '0' AND gvkey = (%s)")
         cursor_buff.execute(e_gvkey, (k,))
+
         # Retrieve EBITDA values for each company and add to a list
         ebitda = [float(ebitda[0]) for ebitda in cursor_buff]
+
+        # Check if data is complete, 11 data points, and only if complete add to the list.
+        if len(ebitda) >= 11:
+            l.append(ebitda)
+
+    # Create empty list to store growth rates
+    growth = []
+
+    # Loop over all lists in gvkey list 'l'
+    for enterprise in l:
+
+        # Add an empty list to 'l' for each iteration
+        growth.append([])
+
+        # Skip element 1, no previous EBITDA value for element 0, and loop through the rest of the elements of list
+        for i in range(1, len(enterprise)):
+            growth[-1].append((enterprise[i] - enterprise[i - 1])/ enterprise[i - 1])
+
+    # Create empty list to store the average growth of each company
+    avg_g = []
+
+    # Loop through all the growth rates in the 'growth' list, calculate the average of the growth rates
+    # and add to new list.
+    for n in range(len(growth)):
+        avg_g.append([np.average(growth[n])])
+
+    # Close connection and cursors
+    cnx.close()
+    cursor.close()
+    cursor_buff.close()
+
+    # Return the list of average EBITDA growth rates
+
+    return avg_g
+
+
+def sigma():
+    """
+    Queries gvkey data from MySQL database to find the unique values of gvkey and adds them to a list,
+    queries EBITDA data based on unique values in gvkey list, calculates lognormal return on EBITDA
+    and then the standard deviation.
+
+    :return: List of lists containing the sigma estimate based on lognormal return of EBITDA per company
+    """
+
+    # Connect to database and create cursor object
+    cnx = mysql.connector.connect(user='root', password='',
+                                  host='localhost', database='msc_data')
+
+    # Create two cursors to execute commands, one is buffered to allow fetching entire result set for each loop
+    cursor = cnx.cursor()
+    cursor_buff = cnx.cursor(buffered=True)
+
+    # Query for unique values of gvkey
+    q_gvkey = """ SELECT gvkey FROM na_data GROUP BY gvkey """
+    cursor.execute(q_gvkey)
+
+    # Use list comprehension to append all unique values of gvkey in database to list
+    keys = [gvkey[0] for gvkey in cursor]
+
+    # Query for EBITDA values grouped by gvkey
+    # Create empty list to append lists filled with EBITDA data from database
+    l = []
+
+    # Loops through the total number of gvkeys and adds them into the MySQL query
+    for i in range(len(keys)):
+        k = keys[i]
+        e_gvkey = ("SELECT ebitda FROM na_data WHERE ebitda > '0' AND gvkey = (%s)")
+        cursor_buff.execute(e_gvkey, (k,))
+
+        # Retrieve EBITDA values for each company and add to a list
+        ebitda = [float(ebitda[0]) for ebitda in cursor_buff]
+
         # Check if data is complete, 11 data points, and only if complete add to the list.
         if len(ebitda) >= 11:
             l.append(ebitda)
 
     # Create empty list to store log returns
     logs = []
+
     # Loop over all lists in gvkey list 'l'
     for enterprise in l:
+
         # Add an empty list to 'l' for each iteration
         logs.append([])
+
         # Skip element 1, no previous EBITDA value for element 0, and loop through the rest of the elements of list
         for i in range(1, len(enterprise)):
             logs[-1].append(np.log(enterprise[i] / enterprise[i - 1]))
@@ -96,6 +173,11 @@ def sigma():
     for n in range(len(logs)):
         sigma_l.append([np.std(logs[n])])
 
+    # Close connection and cursors
+    cnx.close()
+    cursor.close()
+    cursor_buff.close()
+
     # Return the list of standard deviations
     return sigma_l
 
@@ -104,7 +186,7 @@ def sigma():
 # Drift related functions - v , v_star, v_bar
 ########################################################################################################################
 
-def small_v(miu_delta, m_bar, sigma):
+def small_v(m_bar):
     """
     Represents the drift of the process.
 
@@ -114,7 +196,7 @@ def small_v(miu_delta, m_bar, sigma):
     :return: the drift process
     """
 
-    v = miu_delta - (m_bar * sigma)
+    v = miu_delta() - (m_bar * sigma())
 
     return v
 
@@ -139,7 +221,7 @@ def big_l(t):
     """
 
     cnx = mysql.connector.connect(user='root', password='',
-                                  host ='127.0.0.1', database ='msc_data')
+                                  host ='localhost', database ='msc_data')
 
 
     l =
