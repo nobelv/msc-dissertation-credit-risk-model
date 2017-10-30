@@ -4,10 +4,11 @@
 
 import pandas as pd
 import numpy as np
+import scipy.stats as sp
 import mysql.connector
 
 ########################################################################################################################
-# State variable functions - A_0, miu_A, sigma and miu_delta
+# State variable functions - A_0, miu_A, sigma, small_r and miu_delta
 ########################################################################################################################
 
 def big_a_0(delta_0, miu_big_a,):
@@ -110,6 +111,9 @@ def miu_delta():
     return avg_g
 
 
+def small_r():
+    """"""
+
 def sigma():
     """
     Queries gvkey data from MySQL database to find the unique values of gvkey and adds them to a list,
@@ -181,7 +185,172 @@ def sigma():
 
 
 ########################################################################################################################
-# Drift related functions - v , v_star, v_bar
+# v_bar functions - small_omega big_omega_g, big_omega_h, g, h, psi_g, psi_h
+########################################################################################################################
+def small_omega(r):
+    """
+    Adding 0.5 sigma squared to the log normal adjusted drift and then subtracting the risk free interest rate
+
+    :param r: risk free interest rate
+    :return: value for small letter omega
+    """
+    ######################################## have to adjust this to a loop through the sigma() list!
+    omg = v_star() + 0.5 * sigma() ** 2 - r
+    ######################################## have to adjust this to a loop through the sigma() list!
+
+    return omg
+
+
+def var_pi(r):
+    """
+    In a model with jump risk this would be equal to -(r + lambda_bar), as we ignore jump risk this is simply -r
+
+    :param r: risk free interest rate
+    :return: negative value for r
+    """
+    negative_r = -r
+
+    return negative_r
+
+
+def d(a, c):
+    """
+    Simplifying function to reduce code of omega/g/h/psi funcs by placing the sqrt portion in its own variable
+
+    """
+    squareroot = np.sqrt(c**2 - 2*a)
+
+    return squareroot
+
+
+def big_omega_g_plus(a, c):
+    """"""
+    omega_g_plus = -(d(a,c) -c) / (2*d(a,c))
+
+    return omega_g_plus
+
+
+def big_omega_g_minus(a, c):
+    """"""
+    omega_g_minus = +(d(a, c) + c) / (2 * d(a, c))
+
+    return omega_g_minus
+
+
+def big_omega_h_plus(a, c):
+    """"""
+    omega_h_plus = -(d(a,c) + c) / (2 * d(a,c))
+
+    return omega_h_plus
+
+
+def big_omega_h_minus(a, c):
+    """"""
+    omega_h_minus = +(d(a, c) - c) / (2 * d(a, c))
+
+    return omega_h_minus
+
+
+def psi_g_plus(a, c):
+    """"""
+    p_g_plus = -c -(d(a,c))
+
+    return p_g_plus
+
+
+def psi_g_minus(a, c):
+    """"""
+
+    p_g_minus = +c -(d(a,c))
+
+    return p_g_minus
+
+
+def psi_h_plus(a, c):
+    """"""
+    p_h_plus = - c + (d(a,c))
+
+    return p_h_plus
+
+
+def psi_h_minus(a, c):
+    """"""
+    p_h_minus =  - c + (d(a,c))
+
+    return p_h_minus
+
+
+def g_plus(a, b, c, y):
+    """"""
+    gplus = np.exp(- b * psi_g_plus(a,c) * sp.norm.cdf(((- b - y * d(a,c)) / np.sqrt(y)) ,loc=0.0, scale=1.0))
+
+    return gplus
+
+
+def g_minus(a, b, c, y):
+    """"""
+    gminus = np.exp( + b * psi_g_minus(a,c) * sp.norm.cdf(((+ b - y * d(a,c)) / np.sqrt(y)), loc=0.0, scale=1.0))
+
+    return gminus
+
+
+def h_plus(a, b, c, y):
+    """"""
+    hplus = np.exp(- b * psi_h_plus(a,c) * sp.norm.cdf(((- b + y * d(a,c)) / np.sqrt(y)), loc=0.0, scale=1.0))
+
+    return hplus
+
+
+def h_minus(a, b, c, y):
+    """"""
+    hminus = np.exp(+ b * psi_h_minus(a,c) * sp.norm.cdf(((+ b + y * d(a,c)) / np.sqrt(y)), loc=0.0, scale=1.0))
+
+    return hminus
+
+
+def rho(r, m_bar, c):
+    """"""
+
+    # Formula 3.52 - payout_0 formula where we replace A with v_bar
+    payout_0 = ((miu_big_a(r, m_bar)- miu_delta())/small_omega(r)) * (big_omega_h_minus(small_omega(r),
+            (v_star()+ sigma() ** 2) / sigma()) * (1 - (1 / sigma()) *
+            psi_h_minus(small_omega(r), (v_star() + sigma() ** 2) / sigma())) +
+            big_omega_h_minus(small_omega(r), (v_star()+ sigma() ** 2) / sigma()) *
+            ( - 2 * small_a() -1 - (1 / sigma()) *
+            psi_h_minus(small_omega(r), (v_star()+ sigma() ** 2) / sigma())) - 1)
+
+    # Formula 3.53 - coupon_0 formula where we replace A with v_bar and isolate v_bar
+    # what and where do I find "c"
+    coupon_0 = ((c * big_l(0))/var_pi(r)) * (- (1 / sigma()) * big_omega_h_minus(var_pi(r), (v_star() / sigma())) *
+                psi_h_minus(var_pi(r), (v_star() / sigma())) + big_omega_h_minus(var_pi(r), (v_star() / sigma())) * (
+                - 2 * small_a() - (1 / sigma()) * psi_h_minus(var_pi(r), (v_star() / sigma()))))
+
+    # Formula 3.54 - capex_0 formula where we replace A with v_bar and isolate v_bar
+    # what and where do I find "q"
+    capex_0 = (q / var_pi(r)) * (- (1 / sigma()) * big_omega_h_minus(var_pi(r), (v_star() / sigma())) *
+                psi_h_minus(var_pi(r), (v_star() / sigma())) +
+                big_omega_h_minus(var_pi(r), (v_star() / sigma())) *
+                (- 2 * small_a() - (1 / sigma()) * psi_h_minus(var_pi(r), (v_star() / sigma()))))
+
+    rho_output = (coupon_0 + capex_0) / payout_0
+
+    return rho_output
+
+def v_bar(rho, big_l):
+    """
+    If the firm value/asset value passes is lower than this point, the firm defaults.
+
+    :param rho:
+    :return: Point of default for the firm.
+    """
+
+    vbar = rho * big_l
+
+    return vbar
+
+
+########################################################################################################################
+# Drift related functions - v , v_star
 ########################################################################################################################
 
 def small_v(m_bar):
@@ -199,14 +368,14 @@ def small_v(m_bar):
     return v
 
 
-def v_star():
+def v_star(m_bar):
     """
     Lognormal adjusted drift.
 
     :return: the drift adjusted for lognormality.
     """
 
-    vstar = small_v() - 0.5 * sigma()**2
+    vstar = small_v(m_bar) - 0.5 * sigma()**2
 
     return vstar
 
@@ -226,21 +395,6 @@ def big_l(t):
 
     return l
 
-
-
-def v_bar(rho, big_l):
-    """
-    If the firm value/asset value passes is lower than this point, the firm defaults.
-
-    :param rho:
-    :return: Point of default for the firm.
-    """
-
-
-
-    vbar = rho * big_l
-
-    return vbar
 
 ########################################################################################################################
 # ... functions
@@ -269,6 +423,7 @@ def big_r():
 
     return R
 
+
 def big_r_2a():
     """
     Exponent of distance to the barrier.
@@ -288,6 +443,7 @@ def big_r_2a_2():
     r2a2 = big_r()**((2*small_a())+2)
 
     return r2a2
+
 
 ########################################################################################################################
 # Standard normal distribution functions - h1, h2, h3, h4
