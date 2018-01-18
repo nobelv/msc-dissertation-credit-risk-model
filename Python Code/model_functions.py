@@ -4,26 +4,24 @@
 
 import numpy as np
 import scipy.stats as sp
-import mysql.connector
-from sklearn import linear_model
-from sklearn.metrics import mean_squared_error, r2_score
-
+import statsmodels.api as sm
 
 ########################################################################################################################
 # State variable functions - A_0, miu_A, sigma, small_r and miu_delta
 ########################################################################################################################
 
-def big_a_0(delta0, miua, miudelta ):
+
+def big_a_0(delta0, miua, miudelta):
     """
     The value of a security A_t at the beginning of the process is given by the function A0 = delta_0 / (miu_A - g).
     Where g = miu_delta - (lambda*jump), with jump being equal to 0 g = miu_delta.
 
-    :param delta0: the value of EBITDA;
-    :param miua: the discount rate, assumed to be constant for mathematical tractability (miu_big_a)
-    :param miudelta: instantaneous growth rate of the firm
+    :param delta0: the value of EBITDA.
+    :param miua: the discount rate, assumed to be constant for mathematical tractability (miu_big_a).
+    :param miudelta: instantaneous growth rate of the firm.
     """
 
-    return  delta0 / (miua - miudelta)
+    return delta0 / (miua - miudelta)
 
 
 def miu_big_a(r, mbar, sigma):
@@ -36,18 +34,32 @@ def miu_big_a(r, mbar, sigma):
     return r + mbar * sigma
 
 
-def miu_delta(gvkey, ebitdadict, sigma):
+def miu_delta(gvkey, ebitdadict, fyeardict, sigma):
     """
     Instantaneous growth rate of the firm. Essentially the historical growth rate of the state variable,
     which is EBITDA in our model. We use data from the MySQL database and estimate a growth rate through
     linear regressions.
 
-    :param gvkey: gvkey corresponding to the firm
-    :param ebitdadict: dictionary containing all gvkeys and their ebitda values
-    :param sigma: sigma for company
+    :param gvkey: gvkey corresponding to the firm.
+    :param ebitdadict: dictionary containing all gvkeys and their ebitda values.
+    :param fyeardict: dictionary containing all gvkeys and the years of which we have data.
+    :param sigma: standard deviation of the lognormal return on EBITDA.
     :return: List of lists containing the historical growth rate of each of the firms based on their EBITDA.
     """
-    ebitdalist = ebitdadict[gvkey]
+    y = np.array(ebitdadict[gvkey])
+    x = np.array(fyeardict[gvkey])
+
+    x = np.reshape(x, (x.shape[0], -1))
+    x = sm.add_constant(x)
+
+    ln_y = np.log(y)
+
+    rlm_model = sm.RLM(ln_y, x, M=sm.robust.norms.HuberT())
+    rlm_results = rlm_model.fit()
+
+    beta_1 = rlm_results.params[1]
+
+    miudelta = beta_1 + 0.5 * sigma ** 2
 
     return miudelta
 
@@ -56,16 +68,19 @@ def small_r():
 
     return
 
+
 def func_sigma(gvkey, ebitdadict):
     """
     Lognormal return on EBITDA and the standard deviation of these returns.
 
-    :return: List of lists containing the sigma estimate based on lognormal return of EBITDA per company
+    :param gvkey: gvkey corresponding to the firm.
+    :param ebitdadict: dictionary containing all gvkeys and their ebitda values.
+    :return: List of lists containing the sigma estimate based on lognormal return of EBITDA per company.
     """
     ebitda_list = ebitdadict[gvkey]
     logs = []
 
-     # Skip element 1, no previous EBITDA value for element 0, and loop through the rest of the elements of list
+    # Skip element 1, no previous EBITDA value for element 0, and loop through the rest of the elements of list
     for i in range(1, len(ebitda_list)):
         logs.append(np.log(ebitda_list[i] / ebitda_list[i-1]))
 
@@ -73,35 +88,36 @@ def func_sigma(gvkey, ebitdadict):
 
     # Loop through all the log returns in the 'logs' list, calculate the std of log returns and add to new list.
     for n in range(len(logs)):
-        sigma_l.update({gvkey:np.std(logs)})
+        sigma_l.update({gvkey: np.std(logs)})
 
     return sigma_l
-
 
 
 ########################################################################################################################
 # v_bar functions - small_omega big_omega_g, big_omega_h, g, h, psi_g, psi_h
 ########################################################################################################################
 
+
 def small_omega(r, sigma, vstar):
     """
     Adding 0.5 sigma squared to the log normal adjusted drift and then subtracting the risk free interest rate
 
-    :param r: risk free interest rate
-    :param sigma: sigma value from sigma() func.
+    :param r: risk free interest rate.
+    :param sigma: standard deviation of the lognormal return on EBITDA.
     :param vstar: v_star value from v_star() func.
-    :return: value for small letter omega
+    :return: value for small letter omega.
     """
 
     return vstar + 0.5 * sigma ** 2 - r
 
 
 def var_pi(r):
-    #In a model with jump risk this would be equal to -(r + lambda_bar), as we ignore jump risk this is simply "-r"
+    # In a model with jump risk this would be equal to -(r + lambda_bar), as we ignore jump risk this is simply "-r"
     return -r
 
+
 def d(a, c):
-    #Simplifying function to reduce code of omega/g/h/psi funcs by placing the sqrt portion in its own variable
+    # Simplifying function to reduce code of omega/g/h/psi funcs by placing the sqrt portion in its own variable
     return np.sqrt(c ** 2 - 2 * a)
 
 
@@ -110,7 +126,7 @@ def big_omega_g_plus(a, c):
 
 
 def big_omega_g_minus(a, c):
-  return +(d(a, c) + c) / (2 * d(a, c))
+    return +(d(a, c) + c) / (2 * d(a, c))
 
 
 def big_omega_h_plus(a, c):
@@ -175,15 +191,15 @@ def rho(sigma, vstar, r, mbar, miudelta, couponrate, smallomega, smalla, q):
     return (deriv_coupon_0 + deriv_capex_0) / deriv_payout_0
 
 
-def v_bar(rho, bigl):
+def v_bar(rhovalue, bigl):
     """
     If the firm value/asset value passes is lower than this point, the firm defaults.
 
-    :param rho: combination of payout, coupon and capex formulas
-    :param bigl: firm liabilities
+    :param rhovalue: combination of payout, coupon and capex formulas.
+    :param bigl: firm liabilities.
     :return: Point of default for the firm.
     """
-    return rho * bigl
+    return rhovalue * bigl
 
 
 def big_f(a, b, c, y):
@@ -192,22 +208,24 @@ def big_f(a, b, c, y):
     """
 
     if b > 0:
-        bigf = big_omega_g_plus(a,c) * g_plus(a, b, c, y)  + big_omega_h_plus(a, c) * h_plus(a, b, c, y)
+        bigf = big_omega_g_plus(a, c) * g_plus(a, b, c, y) + big_omega_h_plus(a, c) * h_plus(a, b, c, y)
     else:
-        bigf = big_omega_g_minus(a,c) * g_minus(a, b, c, y)  + big_omega_h_minus(a, c) * h_minus(a, b, c, y)
+        bigf = big_omega_g_minus(a, c) * g_minus(a, b, c, y) + big_omega_h_minus(a, c) * h_minus(a, b, c, y)
     return bigf
+
 
 def payout_0(delta0, r, vstar, sigma, bigr, bigr2a2):
     """
     Formula 3.10
     """
     s_omega = small_omega(r, sigma, vstar)
-    aux_omg_h_min_pos = big_omega_h_minus(s_omega,((vstar + sigma ** 2)/sigma))
-    aux_omg_h_min_min = big_omega_h_minus(s_omega, - ((vstar + sigma ** 2)/sigma))
-    aux_bigr_1 = bigr ** ((1/sigma) * psi_h_minus(s_omega, ((vstar + sigma ** 2) / sigma)))
+    aux_omg_h_min_pos = big_omega_h_minus(s_omega, ((vstar + sigma ** 2) / sigma))
+    aux_omg_h_min_min = big_omega_h_minus(s_omega, - ((vstar + sigma ** 2) / sigma))
+    aux_bigr_1 = bigr ** ((1 / sigma) * psi_h_minus(s_omega, ((vstar + sigma ** 2) / sigma)))
     aux_bigr_2 = bigr2a2 + ((1 / sigma) * psi_h_minus(s_omega, - ((vstar + sigma ** 2) / sigma)))
 
-    return ((delta0 /s_omega) * (aux_omg_h_min_pos * aux_bigr_1 + aux_omg_h_min_min * aux_bigr_2 - 1))
+    return (delta0 / s_omega) * (aux_omg_h_min_pos * aux_bigr_1 + aux_omg_h_min_min * aux_bigr_2 - 1)
+
 
 def coupon_0(couponrate, varpi, v, sigma, bigr, bigr2a):
     """
@@ -218,7 +236,8 @@ def coupon_0(couponrate, varpi, v, sigma, bigr, bigr2a):
     aux_bigr_1 = bigr ** ((1 / sigma) * psi_h_minus(varpi, (v / sigma)))
     aux_bigr_2 = bigr2a + ((1 / sigma) * psi_h_minus(varpi, - (v / sigma)))
 
-    return ((couponrate / varpi) * (aux_big_omg_h_min_pos * aux_bigr_1 + aux_big_omg_h_min_min * aux_bigr_2 - 1))
+    return (couponrate / varpi) * (aux_big_omg_h_min_pos * aux_bigr_1 + aux_big_omg_h_min_min * aux_bigr_2 - 1)
+
 
 def capex_0(q, varpi, v, sigma, bigr, bigr2a):
     """
@@ -229,20 +248,29 @@ def capex_0(q, varpi, v, sigma, bigr, bigr2a):
     aux_bigr_1 = bigr ** ((1 / sigma) * psi_h_minus(varpi, (v / sigma)))
     aux_bigr_2 = bigr2a + ((1 / sigma) * psi_h_minus(varpi, - (v / sigma)))
 
-    return ((q / varpi) * (aux_big_omg_h_min_pos * aux_bigr_1 + aux_big_omg_h_min_min * aux_bigr_2 - 1))
+    return (q / varpi) * (aux_big_omg_h_min_pos * aux_bigr_1 + aux_big_omg_h_min_min * aux_bigr_2 - 1)
+
+
+def taxrate(taxcorp, taxdiv):
+    return (1-taxcorp)*(1-taxdiv)
+
+
+def div0(taxratevalue, payout, coupon, capex):
+    return (1-taxratevalue) * (payout - coupon - capex)
 
 ########################################################################################################################
 # Drift related functions - v , v_star
 ########################################################################################################################
 
+
 def small_v(sigma, mbar, miudelta):
     """
     Represents the drift of the process.
-    :param sigma:
+    :param sigma: standard deviation of the lognormal return on EBITDA.
     :param miudelta: The instantaneous growth rate of the project cash flows (exogeniuously determined).
-    :param mbar: The premium per unit of volatility risk
+    :param mbar: The premium per unit of volatility risk.
 
-    :return: the drift process
+    :return: value of the drift process.
     """
 
     return miudelta - (mbar * sigma)
@@ -262,12 +290,9 @@ def big_l(gvkey, liabilities):
     """
     Retrieve liabilities at time t.
 
-    :param t: time
-    :return: value of liabilities at time t
+    :param t: time.
+    :return: value of liabilities at time t.
     """
-
-    # Loops through all gvkeys and adds them into the MySQL query
-
 
     return
 
@@ -291,9 +316,9 @@ def big_r(vbar, biga0):
     Ratio of the barrier to the current project value.
     Basically has to be < 1 or the firm is already closed.
 
-    :param vbar: barrier value
-    :param biga0: value of the security at time 0
-    :return: returns the distance from the barrier
+    :param vbar: barrier value.
+    :param biga0: value of the security at time 0.
+    :return: returns the distance from the barrier.
     """
     # not sure what this represents..
 
@@ -304,9 +329,9 @@ def big_r_2a(bigr, smalla):
     """
     Exponent of distance to the barrier.
 
-    :param bigr: distance from the barrier
-    :param smalla: lognormal adjusted drift divided by sigma squared
-    :return: exponent of the distance to the barrier
+    :param bigr: distance from the barrier.
+    :param smalla: lognormal adjusted drift divided by sigma squared.
+    :return: exponent of the distance to the barrier.
     """
 
     return bigr ** (2 * smalla)
@@ -314,11 +339,11 @@ def big_r_2a(bigr, smalla):
 
 def big_r_2a_2(bigr, smalla):
     """
-    Exponent of distance to the barrier, adding two
+    Exponent of distance to the barrier, adding two.
 
-    :param bigr: distance from the barrier
-    :param smalla: lognormal adjusted drift divided by sigma squared
-    :return: exponent of the distance to the barrier
+    :param bigr: distance from the barrier.
+    :param smalla: lognormal adjusted drift divided by sigma squared.
+    :return: exponent of the distance to the barrier.
     """
 
     return bigr ** ((2 * smalla) + 2)
@@ -331,11 +356,13 @@ def big_r_2a_2(bigr, smalla):
 def h1(biga0, vstar, sigma, z, s):
     """
     Standard normal distribution inputs.
+    :param biga0:
+    :param vstar:
+    :param sigma: standard deviation of the lognormal return on EBITDA.
+    :param z: input specified by security formula.
+    :param s: time denoted as s.
 
-    :param z: input specified by security formula
-    :param s: time denoted as s
-
-    :return: value for h1 to be used in standard normal distribution and standard normal density
+    :return: value for h1 to be used in standard normal distribution and standard normal density.
 
     """
 
@@ -347,10 +374,13 @@ def h1(biga0, vstar, sigma, z, s):
 def h2(bigr, vbar, vstar, sigma, z, s):
     """
     Standard normal distribution inputs.
-
-    :param z: input specified by security formula
-    :param s: time denoted as s
-    :return: value for h1 to be used in standard normal distribution and standard normal density
+    :param bigr:
+    :param vstar:
+    :param vbar:
+    :param sigma: standard deviation of the lognormal return on EBITDA.
+    :param z: input specified by security formula.
+    :param s: time denoted as s.
+    :return: value for h1 to be used in standard normal distribution and standard normal density.
 
     """
 
@@ -360,10 +390,12 @@ def h2(bigr, vbar, vstar, sigma, z, s):
 def h3(biga0, vstar, sigma, z, s):
     """
     Standard normal distribution inputs.
-
-    :param z: input specified by security formula
-    :param s: time denoted as s
-    :return: value for h3 to be used in standard normal distribution and standard normal density
+    :param biga0:
+    :param vstar:
+    :param sigma: standard deviation of the lognormal return on EBITDA.
+    :param z: input specified by security formula.
+    :param s: time denoted as s.
+    :return: value for h3 to be used in standard normal distribution and standard normal density.
     """
 
     return (np.log(z / biga0) - (vstar + sigma ** 2) * s) / (sigma * np.sqrt(s))
@@ -372,10 +404,13 @@ def h3(biga0, vstar, sigma, z, s):
 def h4(bigr, vbar, vstar, sigma, z, s):
     """
     Standard normal distribution inputs.
-
-    :param z: input specified by security formula
-    :param s: time denoted as s
-    :return: value for h4 to be used in standard normal distribution and standard normal density
+    :param bigr:
+    :param vbar:
+    :param vstar:
+    :param sigma: standard deviation of the lognormal return on EBITDA.
+    :param z: input specified by security formula.
+    :param s: time denoted as s.
+    :return: value for h4 to be used in standard normal distribution and standard normal density.
     """
 
     return (np.log((bigr * (vbar / z))) + (vstar + sigma ** 2) * s) / (sigma * np.sqrt(s))
