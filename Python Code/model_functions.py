@@ -299,19 +299,6 @@ def rho(vbar, liabilities):
     return vbar / liabilities
 
 
-def vbar_from_rho(rhovalue, liabilities):
-    """
-    The default barrier calculated from the rho value.
-    This function is here mainly to check the base case result from the main model's thesis.
-
-    :param rhovalue: The scaling factor that normalizes the barrier by the firm's debt.
-    :param liabilities: The firm's debt.
-
-    :return: The level of the default barrier as implied by rho
-    """
-    return rhovalue * liabilities
-
-
 def small_v(sigma, mbar, miudelta):
     """
     Represents the drift of the process.
