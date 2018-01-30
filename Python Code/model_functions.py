@@ -247,12 +247,12 @@ def payout_0(delta0, r, vstar, sigma, bigr, smalla):
     return (delta0 / s_omega) * ((aux_omg_h_min_pos * aux_bigr_1) + (aux_omg_h_min_min * aux_bigr_2 - 1))
 
 
-def coupon_0(couponrate, liabilities, varpi, v, sigma, bigr, smalla):
+def coupon_0(couponrate, liabilities, varpi, vstar, sigma, bigr, smalla):
     """
     Formula 3.15
     """
     a = varpi
-    c = (v / sigma)
+    c = (vstar / sigma)
     aux_big_omg_h_min_pos = big_omega_h_minus(a, c)
     aux_big_omg_h_min_min = big_omega_h_minus(a, - c)
     aux_bigr_1 = bigr ** ((1 / sigma) * psi_h_minus(a, c))
@@ -262,12 +262,12 @@ def coupon_0(couponrate, liabilities, varpi, v, sigma, bigr, smalla):
            ((aux_big_omg_h_min_pos * aux_bigr_1) + (aux_big_omg_h_min_min * aux_bigr_2) - 1)
 
 
-def capex_0(q, varpi, v, sigma, bigr, smalla):
+def capex_0(q, varpi, vstar, sigma, bigr, smalla):
     """
     Formula 3.16
     """
     a = varpi
-    c = (v / sigma)
+    c = (vstar / sigma)
     aux_big_omg_h_min_pos = big_omega_h_minus(a, c)
     aux_big_omg_h_min_min = big_omega_h_minus(a, - c)
     aux_bigr_1 = bigr ** ((1 / sigma) * psi_h_minus(a, c))
