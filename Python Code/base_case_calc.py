@@ -14,7 +14,7 @@ liabilities = 1200
 q = 100
 r = 0.01
 mbar = 0.4
-tax_effective = 0.43
+tax_effective = 0.4312
 couponrate = 0.0211117441989073
 
 # functions
