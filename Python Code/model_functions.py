@@ -50,6 +50,7 @@ def miu_delta(gvkey, ebitdadict, fyeardict, sigma):
 
     :return: List of lists containing the historical growth rate of each of the firms based on their EBITDA.
     """
+
     y = np.array(ebitdadict[gvkey])
     x = np.array(fyeardict[gvkey])
 
@@ -276,12 +277,12 @@ def capex_0(q, varpi, vstar, sigma, bigr, smalla):
     return (q / varpi) * ((aux_big_omg_h_min_pos * aux_bigr_1) + (aux_big_omg_h_min_min * aux_bigr_2) - 1)
 
 
-def taxrate(taxcorp, taxdiv):
+def effective_taxrate(taxcorp, taxdiv):
     return (1-taxcorp)*(1-taxdiv)
 
 
-def div0(taxratevalue, payout, coupon, capex):
-    return (1 - taxratevalue) * (payout - coupon - capex)
+def div0(effectivetax, payout, coupon, capex):
+    return (1 - effectivetax) * (payout - coupon - capex)
 
 
 ########################################################################################################################
@@ -299,31 +300,18 @@ def rho(vbar, liabilities):
     return vbar / liabilities
 
 
-def small_v(sigma, mbar, miudelta):
+def v_star(miudelta, mbar, sigma):
     """
-    Represents the drift of the process.
+    Lognormal adjusted drift of the process.
 
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
     :param miudelta: The instantaneous growth rate of the project cash flows (exogeniuously determined).
     :param mbar: The premium per unit of volatility risk.
-
-    :return: The value of the drift process.
-    """
-
-    return miudelta - (mbar * sigma)
-
-
-def v_star(sigma, smallv):
-    """
-    Lognormal adjusted drift.
-
     :param sigma: The standard deviation of the lognormal return on EBITDA.
-    :param smallv: The drift of the process.
 
     :return: The drift adjusted for lognormality.
     """
 
-    return smallv - 0.5 * sigma ** 2
+    return miudelta - (mbar * sigma) - 0.5 * (sigma ** 2)
 
 
 def big_l(gvkey, liabilities, t):
@@ -440,4 +428,4 @@ def h4(bigr, vbar, vstar, sigma, z, s):
     :return: value for h4 to be used in standard normal distribution and standard normal density.
     """
 
-    return (np.log((bigr * (vbar / z))) + (vstar + sigma ** 2) * s) / (sigma * np.sqrt(s))
+    return (np.log(bigr * (vbar / z)) + (vstar + sigma ** 2) * s) / (sigma * np.sqrt(s))
