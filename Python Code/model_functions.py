@@ -6,7 +6,6 @@ import numpy as np
 import scipy.stats as sp
 import statsmodels.api as sm
 
-
 ########################################################################################################################
 # State variable functions - A_0, miu_A, sigma, small_r and miu_delta
 ########################################################################################################################
@@ -17,7 +16,7 @@ def big_a_0(delta0, miua, miudelta):
     The value of a security A_t at the beginning of the process is given by the function A0 = delta_0 / (miu_A - g).
     Where g = miu_delta - (lambda*jump), with jump being equal to 0 g = miu_delta.
 
-    :param delta0: the value of EBITDA.
+    :param delta0: the value of EBITDA at t = 0.
     :param miua: the discount rate, assumed to be constant for mathematical tractability (miu_big_a).
     :param miudelta: instantaneous growth rate of the firm.
 
@@ -41,7 +40,7 @@ def miu_delta(gvkey, ebitdadict, fyeardict, sigma):
     """
     Instantaneous growth rate of the firm. Essentially the historical growth rate of the state variable,
     which is EBITDA in our model. We use data from the MySQL database and estimate a growth rate through
-    linear regressions.
+    a robust linear regression. For this model we've decided to use HuberT's robust regression.
 
     :param gvkey: gvkey corresponding to the firm.
     :param ebitdadict: dictionary containing all gvkeys and their ebitda values.
@@ -51,8 +50,8 @@ def miu_delta(gvkey, ebitdadict, fyeardict, sigma):
     :return: List of lists containing the historical growth rate of each of the firms based on their EBITDA.
     """
 
-    y = np.array(ebitdadict[gvkey])
-    x = np.array(fyeardict[gvkey])
+    y = np.array(ebitdadict[gvkey].tolist())
+    x = np.array(fyeardict[gvkey].tolist())
 
     x = np.reshape(x, (x.shape[0], -1))
     x = sm.add_constant(x)
@@ -69,11 +68,6 @@ def miu_delta(gvkey, ebitdadict, fyeardict, sigma):
     return miudelta
 
 
-def small_r():
-
-    return
-
-
 def func_sigma(gvkey, ebitdadict):
     """
     Lognormal return on EBITDA and the standard deviation of these returns.
@@ -83,7 +77,7 @@ def func_sigma(gvkey, ebitdadict):
 
     :return: dictionary containing the sigma estimate based on lognormal return of EBITDA per company.
     """
-    ebitda_list = ebitdadict[gvkey]
+    ebitda_list = ebitdadict[gvkey].tolist()
     logs = []
 
     # Skip element 1, no previous EBITDA value for element 0, and loop through the rest of the elements of list
@@ -119,18 +113,23 @@ def small_omega(r, sigma, vstar):
 
 
 def var_pi(r):
-    # In a model with jump risk this would be equal to -(r + lambda_bar), as we ignore jump risk this is simply "-r"
+    """
+    In a model with jump risk this would be equal to -(r + lambda_bar), However, our model ignores jump risk.
+    As such var_pi is simply the risk free interest rate with a swapped sign.
+
+    :param r: The risk free interest rate.
+
+    :return: The swapped sign risk free interest rate.
+    """
     return -r
 
-    # Simplifying function to reduce code of omega/g/h/psi funcs by placing the sqrt portion in its own variable
 
-
+# Simplifying function to reduce code of omega/g/h/psi funcs by placing the sqrt portion in its own variable
 def d(a, c):
     return np.sqrt(c ** 2 - 2 * a)
 
-# functions found on page 33
 
-
+# Auxiliary functions found on page 33
 def big_omega_g_plus(a, c):
     return - (d(a, c) - c) / (2 * d(a, c))
 
@@ -223,7 +222,7 @@ def v_bar(sigma, vstar, r, mbar, miudelta, couponrate, liabilities, smallomega, 
 
 def big_f(a, b, c, y):
     """
-    Proposition 8, formula 2.67
+    Proposition 8, formula 2.67.
     """
 
     if b > 0:
@@ -236,6 +235,16 @@ def big_f(a, b, c, y):
 def payout_0(delta0, r, vstar, sigma, bigr, smalla):
     """
     Formula 3.10
+    Discounted sum of all future cash flows as long as the firm exists.
+
+    :param delta0: The value of EBITDA at t = 0.
+    :param r: The risk free interest rate.
+    :param vstar: The lognormal adjusted drift.
+    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param bigr: Ratio of the barrier to the current project value.
+    :param smalla: Lognormal adjusted drift divided by sigma squared.
+
+    :return:
     """
     s_omega = small_omega(r, sigma, vstar)
     a = s_omega
@@ -251,6 +260,17 @@ def payout_0(delta0, r, vstar, sigma, bigr, smalla):
 def coupon_0(couponrate, liabilities, varpi, vstar, sigma, bigr, smalla):
     """
     Formula 3.15
+    Discounted sum of all future interest costs as long as the firm exists.
+
+    :param couponrate: The firm's interest expense coupon rate.
+    :param liabilities: The firm's total debt.
+    :param varpi: The swapped sign risk free interest rate.
+    :param vstar: The lognormal adjusted drift.
+    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param bigr: Ratio of the barrier to the current project value.
+    :param smalla: Lognormal adjusted drift divided by sigma squared.
+
+    :return:
     """
     a = varpi
     c = (vstar / sigma)
@@ -266,6 +286,16 @@ def coupon_0(couponrate, liabilities, varpi, vstar, sigma, bigr, smalla):
 def capex_0(q, varpi, vstar, sigma, bigr, smalla):
     """
     Formula 3.16
+    Discounted sum of all future capex costs as long as the firm exists.
+
+    :param q: The firm's nominal capital expenditure.
+    :param varpi: The swapped sign risk free interest rate.
+    :param vstar: The lognormal adjusted drift.
+    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param bigr: Ratio of the barrier to the current project value.
+    :param smalla: Lognormal adjusted drift divided by sigma squared.
+
+    :return:
     """
     a = varpi
     c = (vstar / sigma)
@@ -312,20 +342,6 @@ def v_star(miudelta, mbar, sigma):
     """
 
     return miudelta - (mbar * sigma) - 0.5 * (sigma ** 2)
-
-
-def big_l(gvkey, liabilities, t):
-    """
-    Retrieve liabilities at time t.
-
-    :param gvkey: The gvkey corresponding to the firm.
-    :param liabilities:
-    :param t: time.
-
-    :return: value of liabilities at time t.
-    """
-
-    return
 
 
 ########################################################################################################################
