@@ -4,9 +4,9 @@
 
 # Model Execution file, requires model_functions.py & securities_functions.py!
 import model_functions as mf
-import securities_functions as sf
-import mysql.connector
-
+import newtonraphson as nr
+import pandas as pd
+from operator import itemgetter
 import timeit
 
 ########################################################################################################################
@@ -15,79 +15,78 @@ start_time = timeit.default_timer()
 ########################################################################################################################
 
 ########################################################################################################################
-# Querying necessary data from the MySQL DB
+# Setting up dictionaries with all the data
 ########################################################################################################################
 
-cnx = mysql.connector.connect(user='vnobel', password='spookyskeletons', host='192.168.178.202', database='msc_data')
+# Reading the data into a dataframe from our csv files.
+df = pd.read_csv("g:/na_data.csv", sep=';')
+df2 = pd.read_csv("g:/na_treasury.csv", sep=';')
+df2['thedate'] = pd.to_datetime(df2['thedate'])
+df2 = df2.set_index(['thedate'])
 
-# Create two cursors to execute commands, one is buffered to allow fetching entire result set for each loop
-cursor = cnx.cursor()
-cursor_buff = cnx.cursor(buffered=True)
-
-query_gvkey = "SELECT gvkey FROM na_market_data GROUP BY gvkey"
-cursor.execute(query_gvkey)
-keys = [gvkey[0] for gvkey in cursor]
-
+keys = df.gvkey.unique()
 ebitda_dict = {}
-for i in range(len(keys)):
-    k = keys[i]
-    query_ebitda = "SELECT ebitda FROM na_market_data WHERE gvkey = (%s)"
-    cursor_buff.execute(query_ebitda, (k,))
-    ebitda = [float(ebitda[0]) for ebitda in cursor_buff]
-    ebitda_dict.update({k: ebitda})
-
 liabilities_dict = {}
-for i in range(len(keys)):
-    k = keys[i]
-    query_liabilities = "SELECT lt FROM na_market_data WHERE gvkey = (%s)"
-    cursor_buff.execute(query_liabilities, (k,))
-    liabilities = [float(liabilities[0]) for liabilities in cursor_buff]
-    liabilities_dict.update({k: liabilities})
-
 coupon_dict = {}
-for i in range(len(keys)):
-    k = keys[i]
-    query_coupon = "SELECT couponrate FROM na_market_data WHERE gvkey = (%s)"
-    cursor_buff.execute(query_coupon, (k,))
-    coupons = [float(coupons[0]) for coupons in cursor_buff]
-    coupon_dict.update({k: coupons})
-
 capex_dict = {}
-for i in range(len(keys)):
-    k = keys[i]
-    query_capex = "SELECT capx FROM na_market_data WHERE gvkey = (%s)"
-    cursor_buff.execute(query_capex, (k,))
-    capex = [float(capex[0]) for capex in cursor_buff]
-    capex_dict.update({k: capex})
-
 fyear_dict = {}
+
+# Populating our dictionaries with data specific to each company.
 for i in range(len(keys)):
     k = keys[i]
-    query_fyear = "SELECT fyear FROM na_market_data WHERE gvkey = (%s)"
-    cursor_buff.execute(query_fyear, (k,))
-    fyear = [fyear[0] for fyear in cursor_buff]
+    data = df.loc[df['gvkey'] == k]
+    ebitda = data['ebitda']
+    liabilities = data['liabilities']
+    couponrate = data['couponrate']
+    capex = data['capex']
+    fyear = data['fyear']
+    ebitda_dict.update({k: ebitda})
+    liabilities_dict.update({k: liabilities})
+    coupon_dict.update({k: couponrate})
+    capex_dict.update({k: capex})
     fyear_dict.update({k: fyear})
 
-cnx.close()
-cursor.close()
-cursor_buff.close()
 
 ########################################################################################################################
 # Executing the model
 ########################################################################################################################
 
-# Sigma and miu_delta
+# Obtain sigma and miu_delta
 miu_delta_dict = {}
+sigma_dict = {}
 for i in range(len(keys)):
     k = keys[i]
-
+    # Populate dictionaries with sigma & miu_delta values
     sigma = mf.func_sigma(k, ebitda_dict)
+    sigma_dict.update({k: sigma[k]})
     miudelta = mf.miu_delta(k, ebitda_dict, fyear_dict, sigma[k])
     miu_delta_dict.update({k: miudelta})
 
-print(miu_delta_dict)
-print(len(miu_delta_dict))
+# Obtain risk free rate and calculate mbar
+for i in range(len(keys)):
+    k = keys[i]
+    # get the first value in ebitda and fyear per company
+    delta_0 = itemgetter(0)(ebitda_dict[k].tolist())
+    year0 = str(itemgetter(0)(fyear_dict[k].tolist()))
 
+    start_date = "{}-12-01".format(year0)
+    end_date = "{}-12-31".format(year0)
+
+    temp = df2.loc[start_date:end_date]
+    rf_rate = temp['tenyr_rate'].tail(1)
+    rf_rate = rf_rate.tolist()
+
+    def quadratic(x):
+        return float(rf_rate[0]) + float(x) * sigma_dict[k]
+
+    mbar = nr.solve(quadratic, 1, 0.01)
+    miua = mf.miu_big_a(rf_rate[0], mbar, sigma_dict[k])
+    biga0 = mf.big_a_0(delta_0, miua, miu_delta_dict[k])
+    print(rf_rate[0])
+    print(sigma_dict[k])
+    print(mbar)
+    print(miua)
+    print(biga0)
 
 ########################################################################################################################
 # Stopping the timer
