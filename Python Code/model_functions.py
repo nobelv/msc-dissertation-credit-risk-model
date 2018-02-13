@@ -30,7 +30,11 @@ def miu_big_a(r, mbar, sigma):
     """
     The discount rate, assumed to be constant
 
-    :return: the discount rate
+    :param r: The risk free rate.
+    :param mbar: The risk premium.
+    :param sigma: The standard deviation of the lognormal return on EBITDA.
+
+    :return: The discount rate.
     """
 
     return float(r) + mbar * sigma
@@ -42,15 +46,15 @@ def miu_delta(gvkey, ebitdadict, fyeardict, sigma):
     which is EBITDA in our model. We use data from the MySQL database and estimate a growth rate through
     a robust linear regression. For this model we've decided to use HuberT's robust regression.
 
-    :param gvkey: gvkey corresponding to the firm.
-    :param ebitdadict: dictionary containing all gvkeys and their ebitda values.
-    :param fyeardict: dictionary containing all gvkeys and the years of which we have data.
-    :param sigma: standard deviation of the lognormal return on EBITDA.
+    :param gvkey: The gvkey corresponding to the firm.
+    :param ebitdadict: A dictionary containing all gvkeys and their ebitda values.
+    :param fyeardict: A dictionary containing all gvkeys and the years of which we have data.
+    :param sigma: The standard deviation of the lognormal return on EBITDA.
 
     :return: List of lists containing the historical growth rate of each of the firms based on their EBITDA.
     """
 
-    y = np.array(ebitdadict[gvkey].tolist())
+    y = np.array(ebitdadict[gvkey])
     x = np.array(fyeardict[gvkey].tolist())
 
     x = np.reshape(x, (x.shape[0], -1))
@@ -77,9 +81,8 @@ def func_sigma(gvkey, ebitdadict):
 
     :return: dictionary containing the sigma estimate based on lognormal return of EBITDA per company.
     """
-    ebitda_list = ebitdadict[gvkey].tolist()
+    ebitda_list = ebitdadict[gvkey]
     logs = []
-
     # Skip element 1, no previous EBITDA value for element 0, and loop through the rest of the elements of list
     for i in range(1, len(ebitda_list)):
         logs.append(np.log(ebitda_list[i] / ebitda_list[i-1]))
@@ -92,9 +95,8 @@ def func_sigma(gvkey, ebitdadict):
 
     return sigma_dict
 
-
 ########################################################################################################################
-# v_bar functions - small_omega big_omega_g, big_omega_h, g, h, psi_g, psi_h
+# Functions used in the equity and barrier calculation - small_omega var_pi
 ########################################################################################################################
 
 
@@ -122,6 +124,10 @@ def var_pi(r):
     :return: The swapped sign risk free interest rate.
     """
     return -r
+
+########################################################################################################################
+# Auxiliary functions - omega & psi
+########################################################################################################################
 
 
 # Simplifying function to reduce code of omega/g/h/psi funcs by placing the sqrt portion in its own variable
@@ -176,6 +182,10 @@ def h_plus(a, b, c, y):
 
 def h_minus(a, b, c, y):
     return np.exp(+ b * psi_h_minus(a, c) * sp.norm.cdf(((+ b + y * d(a, c)) / np.sqrt(y)), loc=0.0, scale=1.0))
+
+########################################################################################################################
+# Barrier and Equity functions - v_bar, payout_0, coupon_0, capex_0, effective_taxrate and div0
+########################################################################################################################
 
 
 def v_bar(sigma, vstar, r, mbar, miudelta, couponrate, liabilities, smallomega, smalla, q):
@@ -234,7 +244,8 @@ def big_f(a, b, c, y):
 
 def payout_0(delta0, r, vstar, sigma, bigr, smalla):
     """
-    Formula 3.10
+    Formula 3.10.
+
     Discounted sum of all future cash flows as long as the firm exists.
 
     :param delta0: The value of EBITDA at t = 0.
@@ -244,7 +255,7 @@ def payout_0(delta0, r, vstar, sigma, bigr, smalla):
     :param bigr: Ratio of the barrier to the current project value.
     :param smalla: Lognormal adjusted drift divided by sigma squared.
 
-    :return:
+    :return: The value of the discounted sum of all future cash flows.
     """
     s_omega = small_omega(r, sigma, vstar)
     a = s_omega
@@ -260,6 +271,7 @@ def payout_0(delta0, r, vstar, sigma, bigr, smalla):
 def coupon_0(couponrate, liabilities, varpi, vstar, sigma, bigr, smalla):
     """
     Formula 3.15
+
     Discounted sum of all future interest costs as long as the firm exists.
 
     :param couponrate: The firm's interest expense coupon rate.
@@ -270,7 +282,7 @@ def coupon_0(couponrate, liabilities, varpi, vstar, sigma, bigr, smalla):
     :param bigr: Ratio of the barrier to the current project value.
     :param smalla: Lognormal adjusted drift divided by sigma squared.
 
-    :return:
+    :return: The value of the discounted sum of all future interest costs.
     """
     a = varpi
     c = (vstar / sigma)
@@ -286,6 +298,7 @@ def coupon_0(couponrate, liabilities, varpi, vstar, sigma, bigr, smalla):
 def capex_0(q, varpi, vstar, sigma, bigr, smalla):
     """
     Formula 3.16
+
     Discounted sum of all future capex costs as long as the firm exists.
 
     :param q: The firm's nominal capital expenditure.
@@ -295,7 +308,7 @@ def capex_0(q, varpi, vstar, sigma, bigr, smalla):
     :param bigr: Ratio of the barrier to the current project value.
     :param smalla: Lognormal adjusted drift divided by sigma squared.
 
-    :return:
+    :return: The value of the discounted sum of all future capex costs.
     """
     a = varpi
     c = (vstar / sigma)
@@ -307,17 +320,44 @@ def capex_0(q, varpi, vstar, sigma, bigr, smalla):
     return (q / varpi) * ((aux_big_omg_h_min_pos * aux_bigr_1) + (aux_big_omg_h_min_min * aux_bigr_2) - 1)
 
 
-def effective_taxrate(taxcorp, taxdiv):
+def effective_taxrate(market):
+    """
+    Used to calculate the effective tax rate.
+    Default values are taxcorp = 0.21 and taxdiv = 0.28
+
+    :param market: Determines which market tax rates to use, choose from: usa.
+
+    :return: Returns the percentage effective tax rate as a float.
+    """
+    if market == "usa":
+        taxcorp = 0.2
+        taxdiv = 0.35
+    else:
+        print('Market tax rates not available, using default rates.')
+        taxcorp = 0.21
+        taxdiv = 0.28
+
     return (1-taxcorp)*(1-taxdiv)
 
 
 def div0(effectivetax, payout, coupon, capex):
+    """
+    Calculate the value of dividends which is equal to equity assuming there is no equity recovery by shareholders..
+
+    :param effectivetax: The effective tax rate for the market.
+    :param payout: The value of the discounted sum of all future cash flows.
+    :param coupon: The value of the discounted sum of all future interest costs.
+    :param capex: The value of the discounted sum of all future capex costs.
+
+    :return: The company's equity value according to the model.
+    """
     return (1 - effectivetax) * (payout - coupon - capex)
 
+########################################################################################################################
+# Drift related functions - rho, v_star
+########################################################################################################################
 
-########################################################################################################################
-# Drift related functions - v , v_star
-########################################################################################################################
+
 def rho(vbar, liabilities):
     """
     A scaling factor, the barrier (v_bar) as normalized by the firm's debt.
@@ -343,10 +383,6 @@ def v_star(miudelta, mbar, sigma):
 
     return miudelta - (mbar * sigma) - 0.5 * (sigma ** 2)
 
-
-########################################################################################################################
-# ... functions
-########################################################################################################################
 
 def small_a(vstar, sigma):
     """
