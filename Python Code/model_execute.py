@@ -46,10 +46,10 @@ for key in range(len(keys)):
     k = keys[key]
     dataframe = df.loc[df['gvkey'] == k]
     qtr = dataframe['fqtr']
-    t = dataframe['ebitda']
+    ebitda = dataframe['ebitda']
     intexp = dataframe['intexp']
 
-    ebitda_dict.update({k: t})
+    ebitda_dict.update({k: ebitda})
     intexp_dict.update({k: intexp})
     fqtr_dict.update({k: qtr})
 
@@ -79,13 +79,16 @@ capex_ann = dfunc.annualize_qytd(keys, capex_dict, fqtr_dict)
 
 miu_delta_dict = {}
 sigma_dict = {}
+
 for i in range(len(keys)):
     k = keys[i]
     # Populate dictionaries with sigma & miu_delta values
-    sigma = mf.func_sigma(k, ebitda_dict)
+    sigma = mf.func_sigma(k, ebitda_ann)
     sigma_dict.update({k: sigma[k]})
     miudelta = mf.miu_delta(k, ebitda_ann, fyear_dict, sigma[k])
     miu_delta_dict.update({k: miudelta})
+
+    x0 = 0.3
 
     for t in range(len(ebitda_ann[k])):
         ebitdalist = ebitda_ann[k]
@@ -105,6 +108,9 @@ for i in range(len(keys)):
 
         equityobserved = equityobs_dict[k].tolist()
 
+        fqtr = fqtr_dict[k].tolist()
+        fyear = fyear_dict[k].tolist()
+
         def quadratic(x):
             return (mf.effective_taxrate("usa") *
                     (mf.payout_0(delta_0, rf_rate[0],
@@ -117,7 +123,7 @@ for i in range(len(keys)):
                                                               sigma_dict[k]), capex_list[t]),
                                           mf.big_a_0(delta_0, mf.miu_big_a(rf_rate[0], x, sigma_dict[k]),
                                                      miu_delta_dict[k])), mf.small_a(
-                            mf.v_star(miu_delta_dict[k], x,sigma_dict[k]), sigma_dict[k])) -
+                            mf.v_star(miu_delta_dict[k], x, sigma_dict[k]), sigma_dict[k])) -
 
                      mf.coupon_0(couponrate[t], liabilities_list[t], mf.var_pi(rf_rate[0]),
                                  mf.v_star(miu_delta_dict[k], x, sigma_dict[k]), sigma_dict[k],
@@ -142,9 +148,15 @@ for i in range(len(keys)):
                                          mf.big_a_0(delta_0, mf.miu_big_a(rf_rate[0], x, sigma_dict[k]),
                                                     miu_delta_dict[k])), mf.small_a(
                              mf.v_star(miu_delta_dict[k], x, sigma_dict[k]), sigma_dict[k])))) - equityobserved[t]
+        try:
+            mbar = sp.newton(quadratic, x0)
+            x0 = mbar
+            print("Risk Premium for company", k, "is", mbar, "in fiscal year", fyear[t], "for quarter", fqtr[t])
+        except RuntimeError:
+            print("Failed to converge after 50 iterations.", "Attempted calculation for company", k,
+                  "in fiscal year", fyear[t], "for quarter", fqtr[t])
+            pass
 
-        mbar = sp.newton(quadratic, 0.31, fprime2=nr.derivative(quadratic, 0.4, 0.01), maxiter=100000)
-        print("mbar: ", mbar, "for company:", k, "at date", dates[t])
 
 ########################################################################################################################
 # Stopping the timer
