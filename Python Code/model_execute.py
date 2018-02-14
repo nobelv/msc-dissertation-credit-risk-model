@@ -6,7 +6,6 @@
 import model_functions as mf
 import data_functions as dfunc
 import scipy.optimize as sp
-import newtonraphson as nr
 import pandas as pd
 import timeit
 
