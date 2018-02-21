@@ -85,7 +85,7 @@ mbar_list = []
 for i in range(len(keys)):
     k = keys[i]
     # Populate dictionaries with sigma & miu_delta values
-    sigma, miudelta = mf.sigma_and_miu(k, ebitda_ann)
+    miudelta, sigma = mf.sigma_and_miu(k, ebitda_ann)
     sigma_dict.update({k: sigma})
     miu_delta_dict.update({k: miudelta})
 
