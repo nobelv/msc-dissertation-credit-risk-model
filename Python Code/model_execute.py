@@ -2,12 +2,13 @@
 # Market price of risk implied in stocks
 # Credit Risk Model functions - ignoring any jump process
 
-# Model Execution file, requires model_functions.py & securities_functions.py!
+# Model Execution file, requires model_functions.py & data_functions.py!
 import model_functions as mf
 import data_functions as dfunc
 import scipy.optimize as sp
 import pandas as pd
 import timeit
+
 
 ########################################################################################################################
 # Starting a timer
@@ -19,13 +20,15 @@ start_time = timeit.default_timer()
 ########################################################################################################################
 
 # Reading the data into a dataframe from our csv files.
-df = pd.read_csv("g:/na_quarterly_1990.csv", sep=';', dtype={"gvkey": int, "cusip": str, "conml": str, "datadate": str,
-                                                             "fyearq": int, "fqtr": int, "niq": float, "ltq": float,
-                                                             "seqq": float, "capxytd": float, "tieq": float,
-                                                             "xintq": float, "intexp": float, "txtq": float,
-                                                             "dpq": float, "ebitda": float, "prccq": float,
-                                                             "cshoq": float, "equityobs": float})
-df2 = pd.read_csv("g:/na_treasury2.csv", sep=';')
+df = pd.read_csv("/home/victor/Desktop/filtered_na_quarterly.csv",
+                 sep=';', dtype={"gvkey": int, "cusip": str,
+                                 "conml": str, "datadate": str, "fyearq": int, "fqtr": int, "niq": float, "ltq": float,
+                                 "seqq": float, "capxytd": float, "tieq": float, "xintq": float, "intexp": float,
+                                 "txtq": float, "dpq": float, "ebitda": float, "prccq": float, "cshoq": float,
+                                 "equityobs": float})
+
+df2 = pd.read_csv("/home/victor/Desktop/na_treasury2.csv", sep=';')
+
 df2['thedate'] = pd.to_datetime(df2['thedate'], format="%Y%m%d")
 df2 = df2.set_index(['thedate'])
 
@@ -75,19 +78,16 @@ capex_ann = dfunc.annualize_qytd(keys, capex_dict, fqtr_dict)
 ########################################################################################################################
 # Executing the model
 ########################################################################################################################
-
 miu_delta_dict = {}
 sigma_dict = {}
+mbar_list = []
 
 for i in range(len(keys)):
     k = keys[i]
     # Populate dictionaries with sigma & miu_delta values
-    sigma = mf.func_sigma(k, ebitda_ann)
-    sigma_dict.update({k: sigma[k]})
-    miudelta = mf.miu_delta(k, ebitda_ann, fyear_dict, sigma[k])
+    sigma, miudelta = mf.sigma_and_miu(k, ebitda_ann)
+    sigma_dict.update({k: sigma})
     miu_delta_dict.update({k: miudelta})
-
-    x0 = 0.3
 
     for t in range(len(ebitda_ann[k])):
         ebitdalist = ebitda_ann[k]
@@ -109,6 +109,8 @@ for i in range(len(keys)):
 
         fqtr = fqtr_dict[k].tolist()
         fyear = fyear_dict[k].tolist()
+
+        x0 = ((miu_delta_dict[k] - rf_rate[0]) / sigma_dict[k]) + 0.001
 
         def quadratic(x):
             return (mf.effective_taxrate("usa") *
@@ -149,13 +151,21 @@ for i in range(len(keys)):
                              mf.v_star(miu_delta_dict[k], x, sigma_dict[k]), sigma_dict[k])))) - equityobserved[t]
         try:
             mbar = sp.newton(quadratic, x0)
-            x0 = mbar
+            mbar_list.append(mbar)
             print("Risk Premium for company", k, "is", mbar, "in fiscal year", fyear[t], "for quarter", fqtr[t])
         except RuntimeError:
             print("Failed to converge after 50 iterations.", "Attempted calculation for company", k,
                   "in fiscal year", fyear[t], "for quarter", fqtr[t])
             pass
 
+mbar_list = pd.Series(mbar_list)
+print(mbar_list.shape)
+df['mbar'] = mbar_list.values
+
+writer = pd.ExcelWriter('/home/victor/Dropbox/Study Files/'
+                        '__Dissertation - MSc in Finance/Dissertation Files/Python Model/Model Output/output.xlsx')
+df.to_excel(writer, 'Company Data - M_Bar')
+writer.save()
 
 ########################################################################################################################
 # Stopping the timer

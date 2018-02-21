@@ -24,15 +24,24 @@ def annualize_quarterly(keys, data_dict, fqtr_dict):
             if fqtr[ii] == 1:
                 annual = data[ii] * 4
                 annual_list.append(annual)
-            elif fqtr[ii] == 2:
+            elif fqtr[ii] == 2 and fqtr[ii-1] == 1:
                 annual = (data[ii] + data[ii - 1]) * 2
                 annual_list.append(annual)
-            elif fqtr[ii] == 3:
+            elif fqtr[ii] == 2 and fqtr[ii-1]:
+                annual = data[ii] * 4
+                annual_list.append(annual)
+            elif fqtr[ii] == 3 and fqtr[ii-1] == 2:
                 summed = data[ii] + data[ii - 1] + data[ii - 2]
                 annual = summed + (summed / 3)
                 annual_list.append(annual)
-            else:
+            elif fqtr[ii] == 3:
+                annual = data[ii] * 4
+                annual_list.append(annual)
+            elif fqtr[ii] == 4 and fqtr[ii-1] == 3 and fqtr[ii-2] == 2 and fqtr[ii-3] == 1:
                 annual = data[ii] + data[ii - 1] + data[ii - 2] + data[ii - 3]
+                annual_list.append(annual)
+            else:
+                annual = data[ii] * 4
                 annual_list.append(annual)
             data_ann_dict.update({k: annual_list})
 

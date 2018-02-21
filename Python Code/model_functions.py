@@ -40,60 +40,30 @@ def miu_big_a(r, mbar, sigma):
     return float(r) + mbar * sigma
 
 
-def miu_delta(gvkey, ebitdadict, fyeardict, sigma):
+def sigma_and_miu(gvkey, statevar_dict):
     """
-    Instantaneous growth rate of the firm. Essentially the historical growth rate of the state variable,
-    which is EBITDA in our model. We use data from the MySQL database and estimate a growth rate through
-    a robust linear regression. For this model we've decided to use HuberT's robust regression.
+    Calculates the instantaneous growth rate of the firm, the miu_delta, through a robust linear regression on the
+    differences between the log of the state variable. The sigma comes from the standard error of the residuals after
+    applying the robust weights.
 
     :param gvkey: The gvkey corresponding to the firm.
-    :param ebitdadict: A dictionary containing all gvkeys and their ebitda values.
-    :param fyeardict: A dictionary containing all gvkeys and the years of which we have data.
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param statevar_dict:  The dictionary containing all gvkeys and the state variable values.
 
-    :return: List of lists containing the historical growth rate of each of the firms based on their EBITDA.
+    :return: Returns a tuple containing miu_delta and sigma.
     """
+    statevar = np.asarray(statevar_dict[gvkey])
+    y = np.log(statevar[1:]) - np.log(statevar[:-1])
+    x = np.ones(len(y))
 
-    y = np.array(ebitdadict[gvkey])
-    x = np.array(fyeardict[gvkey].tolist())
-
-    x = np.reshape(x, (x.shape[0], -1))
-    x = sm.add_constant(x)
-
-    ln_y = np.log(y)
-
-    rlm_model = sm.RLM(ln_y, x, M=sm.robust.norms.HuberT())
+    rlm_model = sm.RLM(y, x, M=sm.robust.norms.HuberT())
     rlm_results = rlm_model.fit()
 
-    beta_1 = rlm_results.params[1]
+    # print(rlm_results.summary(yname='y',xname=['var_%d' % i for i in range(len(rlm_results.params))]))
 
-    miudelta = beta_1 + 0.5 * sigma ** 2
+    sigma_calc = np.std(rlm_results.resid * rlm_results.weights)
+    miudelta = rlm_results.params[0] + (0.5 * sigma_calc ** 2)
 
-    return miudelta
-
-
-def func_sigma(gvkey, ebitdadict):
-    """
-    Lognormal return on EBITDA and the standard deviation of these returns.
-
-    :param gvkey: The gvkey corresponding to the firm.
-    :param ebitdadict: The dictionary containing all gvkeys and their ebitda values.
-
-    :return: dictionary containing the sigma estimate based on lognormal return of EBITDA per company.
-    """
-    ebitda_list = ebitdadict[gvkey]
-    logs = []
-    # Skip element 1, no previous EBITDA value for element 0, and loop through the rest of the elements of list
-    for i in range(1, len(ebitda_list)):
-        logs.append(np.log(ebitda_list[i] / ebitda_list[i-1]))
-
-    sigma_dict = {}
-
-    # Loop through all the log returns in the 'logs' list, calculate the std of log returns and add to new dictionary.
-    for n in range(len(logs)):
-        sigma_dict.update({gvkey: np.std(logs)})
-
-    return sigma_dict
+    return miudelta, sigma_calc
 
 ########################################################################################################################
 # Functions used in the equity and barrier calculation - small_omega var_pi
