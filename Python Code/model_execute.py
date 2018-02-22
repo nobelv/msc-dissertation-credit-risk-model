@@ -4,11 +4,10 @@
 
 # Model Execution file, requires model_functions.py & data_functions.py!
 import model_functions as mf
-import data_functions as dfunc
 import scipy.optimize as sp
 import pandas as pd
 import timeit
-
+import os
 
 ########################################################################################################################
 # Starting a timer
@@ -18,22 +17,20 @@ start_time = timeit.default_timer()
 ########################################################################################################################
 # Setting up dictionaries with all the data
 ########################################################################################################################
+path = os.path.dirname(os.path.abspath(""))
 
 # Reading the data into a dataframe from our csv files.
-df = pd.read_csv("E:/Dropbox/Study Files/__Dissertation - MSc in Finance/Dissertation Files/"
-                 "Python Model/Data/cashflow_based_statevar.csv", sep=",",
+df = pd.read_csv(path + "\Data\cashflow_based_statevar.csv", sep=",",
                  dtype={"key": str, "fyear": str, "ticker": str, "statevariable": float, "fixedcosts": float,
                         "couponrate": float, "liabilities": float, "equityobserved": float})
 
-df['fyear'] = pd.to_datetime(df['fyear'], format="%m%d%Y")
+df['fyear'] = pd.to_datetime(df['fyear'], format="%m%d%Y").apply(lambda x: x.date())
 
-df2 = pd.read_csv("E:/Dropbox/Study Files/__Dissertation - MSc in Finance/Dissertation Files/"
-                  "Python Model/Data/na_treasury2.csv", sep=';')
+df2 = pd.read_csv(path + "\Data\\na_treasury.csv", sep=';')
 df2['thedate'] = pd.to_datetime(df2['thedate'], format="%Y%m%d")
 df2 = df2.set_index(['thedate'])
 
 keys = df.ticker.unique()
-print(len(keys))
 statevar_dict = {}
 liabilities_dict = {}
 coupon_dict = {}
@@ -60,18 +57,14 @@ for key in range(len(keys)):
     date_dict.update({k: date})
     equityobs_dict.update({k: equityobs})
 
-# Annualize ebitda, interest expense and capex
-#
-# ebitda_ann = dfunc.annualize_quarterly(keys, ebitda_dict, fqtr_dict)
-# intexp_ann = dfunc.annualize_quarterly(keys, intexp_dict, fqtr_dict)
-# capex_ann = dfunc.annualize_qytd(keys, capex_dict, fqtr_dict)
-
 ########################################################################################################################
 # Executing the model
 ########################################################################################################################
 miu_delta_dict = {}
 sigma_dict = {}
 mbar_list = []
+sigma_list = []
+miudelta_list = []
 
 for i in range(len(keys)):
     k = keys[i]
@@ -134,19 +127,29 @@ for i in range(len(keys)):
         try:
             mbar = sp.newton(quadratic, x0)
             mbar_list.append(mbar)
-            print("Risk Premium for company", k, "is", mbar, "for date", fyear[t])
+            miudelta_list.append(miudelta)
+            sigma_list.append(sigma)
+            # print function can be enabled for debugging.
+            # print("Risk Premium for company", k, "is", mbar, "for date", fyear[t])
         except RuntimeError:
             print("Failed to converge after 50 iterations.", "Attempted calculation for company", k,
                   "for date", fyear[t])
             pass
 
 mbar_list = pd.Series(mbar_list)
-df['mbar'] = mbar_list.values
+sigma_list = pd.Series(sigma_list)
+miudelta_list = pd.Series(miudelta_list)
 
-writer = pd.ExcelWriter("E:/Dropbox/Study Files/__Dissertation - MSc in Finance/Dissertation Files/"
-                        "Python Model/Data/model_outputs.xlsx")
+df['mbar'] = mbar_list.values
+df['sigma'] = sigma_list.values
+df['miu_delta'] = miudelta_list.values
+
+print(df.head())
+
+writer = pd.ExcelWriter(path + "\Data\model_outputs.xlsx")
 df.to_excel(writer, 'Company Data - M_Bar')
 writer.save()
+writer.close()
 
 ########################################################################################################################
 # Stopping the timer
