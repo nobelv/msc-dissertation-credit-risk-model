@@ -14,9 +14,9 @@ import statsmodels.api as sm
 def big_a_0(delta0, miua, miudelta):
     """
     The value of a security A_t at the beginning of the process is given by the function A0 = delta_0 / (miu_A - g).
-    Where g = miu_delta - (lambda*jump), with jump being equal to 0 g = miu_delta.
+    Where g = miu_delta - (lambda*jump), with jump being equal to 0, g = miu_delta.
 
-    :param delta0: the value of EBITDA at t = 0.
+    :param delta0: the value of the state variable at t = 0.
     :param miua: the discount rate, assumed to be constant for mathematical tractability (miu_big_a).
     :param miudelta: instantaneous growth rate of the firm.
 
@@ -32,8 +32,7 @@ def miu_big_a(r, mbar, sigma):
 
     :param r: The risk free rate.
     :param mbar: The risk premium.
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
-
+    :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
     :return: The discount rate.
     """
 
@@ -47,9 +46,10 @@ def sigma_and_miu(gvkey, statevar_dict):
     applying the robust weights.
 
     :param gvkey: The gvkey corresponding to the firm.
-    :param statevar_dict:  The dictionary containing all gvkeys and the state variable values.
+    :param statevar_dict: The dictionary containing all gvkeys and the state variable values.
 
-    :return: Returns a tuple containing miu_delta and sigma.
+    :return: Returns a tuple containing miu_delta (instantaneous growth rate of the firm) and sigma (robustly weighted
+    standard error of the residuals).
     """
     statevar = np.asarray(statevar_dict[gvkey])
     y = np.log(statevar[1:]) - np.log(statevar[:-1])
@@ -58,6 +58,7 @@ def sigma_and_miu(gvkey, statevar_dict):
     rlm_model = sm.RLM(y, x, M=sm.robust.norms.HuberT())
     rlm_results = rlm_model.fit()
 
+    # used for debugging
     # print(rlm_results.summary(yname='y',xname=['var_%d' % i for i in range(len(rlm_results.params))]))
 
     sigma_calc = np.std(rlm_results.resid * rlm_results.weights)
@@ -75,7 +76,7 @@ def small_omega(r, sigma, vstar):
     Adding 0.5 sigma squared to the log normal adjusted drift and then subtracting the risk free interest rate
 
     :param r: The risk free interest rate.
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
     :param vstar: The lognormal adjusted drift.
 
     :return: The log normal adjusted drift plus 0.5 sigma squared minus the risk free interest rate.
@@ -163,7 +164,7 @@ def v_bar(sigma, vstar, r, mbar, miudelta, couponrate, liabilities, smallomega, 
     The Default barrier. If the firm value/asset value passes is lower than this point, the shareholders
     give up the firm and the firm defaults.
 
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
     :param vstar: The lognormal adjusted drift.
     :param r: The risk free interest rate.
     :param mbar: The market price of risk.
@@ -192,6 +193,7 @@ def v_bar(sigma, vstar, r, mbar, miudelta, couponrate, liabilities, smallomega, 
                       (- 2 * smalla - (1 / sigma) * psi_h_minus(a2, - c2)))
 
     # Formula 3.54 - capex_0 formula where we replace A with v_bar and isolate v_bar
+    #
     deriv_capex_0 = (q / a2) * \
                     (- (1 / sigma) * big_omega_h_minus(a2, c2) *
                      psi_h_minus(a2, c2) + big_omega_h_minus(a2, - c2) *
@@ -218,10 +220,10 @@ def payout_0(delta0, r, vstar, sigma, bigr, smalla):
 
     Discounted sum of all future cash flows as long as the firm exists.
 
-    :param delta0: The value of EBITDA at t = 0.
+    :param delta0: The value of our cash flow based state variable at t = 0.
     :param r: The risk free interest rate.
     :param vstar: The lognormal adjusted drift.
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
     :param bigr: Ratio of the barrier to the current project value.
     :param smalla: Lognormal adjusted drift divided by sigma squared.
 
@@ -248,7 +250,7 @@ def coupon_0(couponrate, liabilities, varpi, vstar, sigma, bigr, smalla):
     :param liabilities: The firm's total debt.
     :param varpi: The swapped sign risk free interest rate.
     :param vstar: The lognormal adjusted drift.
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
     :param bigr: Ratio of the barrier to the current project value.
     :param smalla: Lognormal adjusted drift divided by sigma squared.
 
@@ -274,7 +276,7 @@ def capex_0(q, varpi, vstar, sigma, bigr, smalla):
     :param q: The firm's nominal capital expenditure.
     :param varpi: The swapped sign risk free interest rate.
     :param vstar: The lognormal adjusted drift.
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
     :param bigr: Ratio of the barrier to the current project value.
     :param smalla: Lognormal adjusted drift divided by sigma squared.
 
@@ -293,21 +295,19 @@ def capex_0(q, varpi, vstar, sigma, bigr, smalla):
 def effective_taxrate(market):
     """
     Used to calculate the effective tax rate.
-    Default values are taxcorp = 0.21 and taxdiv = 0.28
+    Default value is taxdiv = 0.28
 
     :param market: Determines which market tax rates to use, choose from: usa.
 
     :return: Returns the percentage effective tax rate as a float.
     """
     if market == "usa":
-        taxcorp = 0.2
-        taxdiv = 0.35
+        taxdiv = 0.20
     else:
         print('Market tax rates not available, using default rates.')
-        taxcorp = 0.21
-        taxdiv = 0.28
+        taxdiv = 0.20
 
-    return (1-taxcorp)*(1-taxdiv)
+    return 1-taxdiv
 
 
 def div0(effectivetax, payout, coupon, capex):
@@ -324,7 +324,7 @@ def div0(effectivetax, payout, coupon, capex):
     return (1 - effectivetax) * (payout - coupon - capex)
 
 ########################################################################################################################
-# Drift related functions - rho, v_star
+# Drift related functions - rho, v_star, small_a and big_r
 ########################################################################################################################
 
 
@@ -346,7 +346,7 @@ def v_star(miudelta, mbar, sigma):
 
     :param miudelta: The instantaneous growth rate of the project cash flows (exogeniuously determined).
     :param mbar: The premium per unit of volatility risk.
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
 
     :return: The drift adjusted for lognormality.
     """
@@ -359,7 +359,7 @@ def small_a(vstar, sigma):
     Lognormal adjusted drift divided by sigma squared.
 
     :param vstar: The lognormal adjusted drift.
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
 
     :return: the value of a based on v_star and sigma.
     """
@@ -391,7 +391,7 @@ def h1(biga0, vstar, sigma, z, s):
 
     :param biga0: The value of the security at time 0.
     :param vstar: The lognormal adjusted drift.
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
     :param z: input specified by security formula.
     :param s: time denoted as s.
 
@@ -409,7 +409,7 @@ def h2(bigr, vbar, vstar, sigma, z, s):
     :param bigr: Ratio of the barrier to the current project value.
     :param vstar: The lognormal adjusted drift.
     :param vbar: The barrier as calculated by derivatives of payout, coupon and capex functions.
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
     :param z: input specified by security formula.
     :param s: time denoted as s.
 
@@ -426,7 +426,7 @@ def h3(biga0, vstar, sigma, z, s):
 
     :param biga0: The value of the security at time 0.
     :param vstar: The lognormal adjusted drift.
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
     :param z: input specified by security formula.
     :param s: time denoted as s.
 
@@ -443,7 +443,7 @@ def h4(bigr, vbar, vstar, sigma, z, s):
     :param bigr: Ratio of the barrier to the current project value.
     :param vbar: The barrier as calculated by derivatives of payout, coupon and capex functions.
     :param vstar: The lognormal adjusted drift.
-    :param sigma: The standard deviation of the lognormal return on EBITDA.
+    :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
     :param z: input specified by security formula.
     :param s: time denoted as s.
 

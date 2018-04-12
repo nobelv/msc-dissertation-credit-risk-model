@@ -144,8 +144,6 @@ df['mbar'] = mbar_list.values
 df['sigma'] = sigma_list.values
 df['miu_delta'] = miudelta_list.values
 
-print(df.head())
-
 writer = pd.ExcelWriter(path + "\Data\model_outputs.xlsx")
 df.to_excel(writer, 'Company Data - M_Bar')
 writer.save()
