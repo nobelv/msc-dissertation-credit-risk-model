@@ -39,7 +39,7 @@ def miu_big_a(r, mbar, sigma):
     return float(r) + mbar * sigma
 
 
-def sigma_and_miu(gvkey, statevar_dict):
+def sigma_and_miu(gvkey, statevar_dict, fixedmiu=False):
     """
     Calculates the instantaneous growth rate of the firm, the miu_delta, through a robust linear regression on the
     differences between the log of the state variable. The sigma comes from the standard error of the residuals after
@@ -47,6 +47,7 @@ def sigma_and_miu(gvkey, statevar_dict):
 
     :param gvkey: The gvkey corresponding to the firm.
     :param statevar_dict: The dictionary containing all gvkeys and the state variable values.
+    :param fixedmiu: determines whether to use a fixed value of miu_delta or not.
 
     :return: Returns a tuple containing miu_delta (instantaneous growth rate of the firm) and sigma (robustly weighted
     standard error of the residuals).
@@ -63,7 +64,8 @@ def sigma_and_miu(gvkey, statevar_dict):
 
     sigma_calc = np.std(rlm_results.resid * rlm_results.weights)
     miudelta = rlm_results.params[0] + (0.5 * sigma_calc ** 2)
-    # miudelta = 0.04
+    if fixedmiu is True:
+        miudelta = 0.04
     return miudelta, sigma_calc
 
 ########################################################################################################################
@@ -167,18 +169,17 @@ def small_a(vstar, sigma):
     return vstar / sigma ** 2
 
 
-def small_a_tilde(vstar, sigma, alpha):
+def a_tilde(vtilde, sigma):
     """
     Debt growth rate adjusted drift divided by sigma squared. Uses the already lognormal adjusted drift.
 
-    :param vstar: The lognormal adjusted drift.
+    :param vtilde: Debt growth rate adjusted drift. Uses the already lognormal adjusted drift.
     :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
-    :param alpha: The debt growth rate.
 
     :return: the debt growth rate
     """
 
-    return v_tilde(vstar, alpha) / sigma ** 2
+    return vtilde / sigma ** 2
 
 
 def big_r(vbar, biga0):
@@ -242,8 +243,8 @@ def v_bar(sigma, vstar, vtilde, r, mbar, miudelta, couponrate, liabilities, omeg
                      (- 2 * smallatilde - (1 / sigma * psi_h_minus(a2, - c2))))
 
     # netdebt_0 formula where we replace A with v_bar and isolate v_bar
-    c3 = var_pi_tilde(r, alpha) / sigma
-    deriv_netdebt_0 = ((alpha / liabilities) / var_pi_tilde(r, alpha) *
+    c3 = v_tilde(vstar, alpha) / sigma
+    deriv_netdebt_0 = ((alpha * liabilities) / var_pi_tilde(r, alpha) *
                        - (1 / sigma) * big_omega_h_minus(a2, c3) * psi_h_minus(a2, c3) + big_omega_h_minus(a2, - c3) *
                        (- 2 * smallatilde - (1 / sigma) * psi_h_minus(a2, - c3)))
 
@@ -262,7 +263,7 @@ def big_f(a, b, c, y):
     return bigf
 
 
-def payout_0(delta0, r, vtilde, sigma, bigr, smallatilde):
+def payout_0(delta0, r, vstar, vtilde, sigma, bigr, atilde):
     """
     Formula 3.10.
 
@@ -270,22 +271,23 @@ def payout_0(delta0, r, vtilde, sigma, bigr, smallatilde):
 
     :param delta0: The value of our cash flow based state variable at t = 0.
     :param r: The risk free interest rate.
+    :param vstar: The lognormal adjusted drift.
     :param vtilde: vstar adjusted by the debt growth rate.
     :param sigma: The standard error of the residuals of the robust linear regression on the state variable.
     :param bigr: Ratio of the barrier to the current project value.
-    :param smallatilde: The debt growth rate adjusted drift divided by sigma squared, uses log normal adjusted drift.
+    :param atilde: The debt growth rate adjusted drift divided by sigma squared, uses log normal adjusted drift.
 
     :return: The value of the discounted sum of all future cash flows.
     """
-    s_omega = omega(r, sigma, vtilde)
+    s_omega = omega(r, sigma, vstar)
     a = s_omega
     c = (vtilde + sigma ** 2) / sigma
     aux_omg_h_min_pos = big_omega_h_minus(a, c)
     aux_omg_h_min_min = big_omega_h_minus(a, - c)
     aux_bigr_1 = bigr ** ((1 / sigma) * psi_h_minus(a, c))
-    aux_bigr_2 = bigr ** ((2 * smallatilde) + 2 + (1 / sigma) * psi_h_minus(a, - c))
+    aux_bigr_2 = bigr ** ((2 * atilde) + 2 + (1 / sigma) * psi_h_minus(a, - c))
 
-    return (delta0 / s_omega) * ((aux_omg_h_min_pos * aux_bigr_1) + (aux_omg_h_min_min * aux_bigr_2 - 1))
+    return (delta0 / s_omega) * ((aux_omg_h_min_pos * aux_bigr_1) + (aux_omg_h_min_min * aux_bigr_2) - 1)
 
 
 def coupon_0(couponrate, liabilities, varpitilde, vstar, sigma, bigr, smallatilde):
@@ -319,7 +321,7 @@ def fixedcost_0(q, varpitilde, vstar, sigma, bigr, smallatilde):
     """
     Formula 3.16
 
-    Discounted sum of all future capex costs as long as the firm exists.
+    Discounted sum of all future fixed costs as long as the firm exists.
 
     :param q: The firm's total fixed costs.
     :param varpitilde: The swapped sign version of the risk free interest rate minus the debt growth rate.
@@ -328,7 +330,7 @@ def fixedcost_0(q, varpitilde, vstar, sigma, bigr, smallatilde):
     :param bigr: Ratio of the barrier to the current project value.
     :param smallatilde: The debt growth rate adjusted drift divided by sigma squared, uses log normal adjusted drift.
 
-    :return: The value of the discounted sum of all future capex costs.
+    :return: The value of the discounted sum of all future fixed costs.
     """
     a = varpitilde
     c = (vstar / sigma)
@@ -342,9 +344,7 @@ def fixedcost_0(q, varpitilde, vstar, sigma, bigr, smallatilde):
 
 def netdebt_0(alpha, liabilities, varpitilde, vtilde, sigma, bigr, smallatilde):
     """
-    Formula 3.16
-
-    Discounted sum of all future capex costs as long as the firm exists.
+    Discounted sum of all future new debt issued as long as the firm exists.
 
     :param alpha: The debt growth rate.
     :param liabilities: The firm's debt.
@@ -354,20 +354,20 @@ def netdebt_0(alpha, liabilities, varpitilde, vtilde, sigma, bigr, smallatilde):
     :param bigr: Ratio of the barrier to the current project value.
     :param smallatilde: The debt growth rate adjusted drift divided by sigma squared, uses log normal adjusted drift.
 
-    :return: The value of the discounted sum of all future capex costs.
+    :return: The value of the discounted sum of all future new debt issued.
     """
     a = varpitilde
-    c = vtilde / sigma
+    c = (vtilde / sigma)
     aux_big_omg_h_min_pos = big_omega_h_minus(a, c)
     aux_big_omg_h_min_min = big_omega_h_minus(a, - c)
     aux_bigr_1 = bigr ** ((1 / sigma) * psi_h_minus(a, c))
     aux_bigr_2 = bigr ** (2 * smallatilde + (1 / sigma) * psi_h_minus(a, - c))
 
-    return ((alpha/liabilities) / varpitilde) * ((aux_big_omg_h_min_pos * aux_bigr_1) +
-                                                 (aux_big_omg_h_min_min * aux_bigr_2) - 1)
+    return ((alpha * liabilities) / varpitilde) * ((aux_big_omg_h_min_pos * aux_bigr_1) +
+                                                   (aux_big_omg_h_min_min * aux_bigr_2) - 1)
 
 
-def effective_taxrate():
+def div_taxrate():
     """
     Used to calculate the effective tax rate.
 
@@ -378,18 +378,19 @@ def effective_taxrate():
     return 1 - taxdiv
 
 
-def div0(effectivetax, payout, coupon, capex):
+def div0(effectivetax, cash, payout, coupon, fixedcosts, netdebt):
     """
     Calculate the value of dividends which is equal to equity assuming there is no equity recovery by shareholders..
 
     :param effectivetax: The effective tax rate for the market.
+    :param cash: The value of cash at t0.
     :param payout: The value of the discounted sum of all future cash flows.
     :param coupon: The value of the discounted sum of all future interest costs.
-    :param capex: The value of the discounted sum of all future capex costs.
+    :param fixedcosts: The value of the discounted sum of all future fixed costs.
 
     :return: The company's equity value according to the model.
     """
-    return (1 - effectivetax) * (payout - coupon - capex)
+    return (1 - effectivetax) * (cash + payout - coupon - fixedcosts + netdebt)
 
 
 ########################################################################################################################

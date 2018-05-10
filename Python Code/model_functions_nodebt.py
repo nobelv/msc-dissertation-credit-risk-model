@@ -237,7 +237,7 @@ def payout_0(delta0, r, vstar, sigma, bigr, smalla):
     aux_bigr_1 = bigr ** ((1 / sigma) * psi_h_minus(a, c))
     aux_bigr_2 = bigr ** ((2 * smalla) + 2 + (1 / sigma) * psi_h_minus(a, - c))
 
-    return (delta0 / s_omega) * ((aux_omg_h_min_pos * aux_bigr_1) + (aux_omg_h_min_min * aux_bigr_2 - 1))
+    return (delta0 / s_omega) * ((aux_omg_h_min_pos * aux_bigr_1) + (aux_omg_h_min_min * aux_bigr_2) - 1)
 
 
 def coupon_0(couponrate, liabilities, varpi, vstar, sigma, bigr, smalla):
@@ -292,7 +292,7 @@ def fixedcost_0(q, varpi, vstar, sigma, bigr, smalla):
     return (q / varpi) * ((aux_big_omg_h_min_pos * aux_bigr_1) + (aux_big_omg_h_min_min * aux_bigr_2) - 1)
 
 
-def effective_taxrate():
+def div_taxrate():
     """
     Used to calculate the effective tax rate.
 

@@ -78,6 +78,7 @@ mbar_list = []
 sigma_list = []
 miudelta_list = []
 miu_a_list = []
+vbar_list = []
 
 # Lists for statistical tests
 sw_list = []
@@ -111,12 +112,12 @@ for i in range(len(keys)):
             # print("Calculating for firm", k)  # just for debugging
 
             *_, sw = sps.shapiro(statevar_dict[k])
-            if sw < 0.05:
+            if sw > 0.05:
                 for n in range(len(statevar_dict[k])):
                     corr_list.append(correlation)
                     sw_list.append(sw)
 
-                miudelta, sigma = mf.sigma_and_miu(k, statevar_dict)
+                miudelta, sigma = mf.sigma_and_miu(k, statevar_dict, fixedmiu=False)
                 sigma_dict.update({k: sigma})
                 miu_delta_dict.update({k: miudelta})
 
@@ -145,53 +146,59 @@ for i in range(len(keys)):
                     eq_obs = equityobserved[t]
                     varpi_tilde = mf.var_pi_tilde(r, alpha)
 
-                    # Set the initial 'guess' for the x0 to be used in Newton-Raphson algo
-                    x0 = ((miu_delta - r - alpha) / sigm) + 0.001
+                    # Set the initial 'guess' for the x0 to be used in rootfinding algo
+                    x0 = ((miu_delta - r) / sigm) + 0.001
 
                     def quadratic(m_bar):
-                        return (mf.effective_taxrate() *
-                                (cash_0 + mf.payout_0(delta_0, r, mf.v_tilde(
-                                             mf.v_star(miu_delta, m_bar, sigm), miu_delta), sigm,
-                                             mf.big_r(mf.v_bar(sigm, mf.v_star(miu_delta, m_bar, sigm),
-                                                      mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha),
-                                                      r, m_bar, miu_delta, c, L,
-                                                      mf.omega(r, sigm, mf.v_star(miu_delta, m_bar, sigm)),
-                                                      mf.small_a_tilde(mf.v_star(miu_delta, m_bar, sigm), sigm, alpha),
-                                                               q, alpha),
-                                                      mf.big_a_0(delta_0, mf.miu_big_a(r, m_bar, sigm), miu_delta)),
-                                             mf.small_a_tilde(mf.v_star(miu_delta, m_bar, sigm), sigm, alpha)) -
 
-                                 mf.coupon_0(c, L, varpi_tilde,
-                                             mf.v_star(miu_delta, m_bar, sigm), sigm,
-                                             mf.big_r(mf.v_bar(sigm, mf.v_star(miu_delta, m_bar, sigm),
-                                                               mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha),
-                                                               r, m_bar, miu_delta, c, L,
-                                                               mf.omega(r, sigm, mf.v_star(miu_delta, m_bar, sigm)),
-                                                               mf.small_a_tilde(mf.v_star(miu_delta, m_bar, sigm),
-                                                                                sigm, alpha), q, alpha),
-                                                      mf.big_a_0(delta_0, mf.miu_big_a(r, m_bar, sigm), miu_delta)),
-                                             mf.small_a_tilde(mf.v_star(miu_delta, m_bar, sigm), sigm, alpha)) -
+                        divtax = mf.div_taxrate()
 
-                                 mf.fixedcost_0(q, varpi_tilde, mf.v_star(miu_delta, m_bar, sigm), sigm,
-                                                mf.big_r(mf.v_bar(sigm, mf.v_star(miu_delta, m_bar, sigm),
-                                                                  mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha),
+                        payout_0 = mf.payout_0(delta_0, r, mf.v_star(miudelta, m_bar, sigm),
+                                               mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), miu_delta), sigm,
+                                               mf.big_r(mf.v_bar(sigm, mf.v_star(miu_delta, m_bar, sigm),
+                                               mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha),
+                                                                 r, m_bar, miu_delta, c, L,
+                                               mf.omega(r, sigm, mf.v_star(miu_delta, m_bar, sigm)),
+                                               mf.a_tilde(mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha), sigm),
+                                                                 q, alpha),
+                                               mf.big_a_0(delta_0, mf.miu_big_a(r, m_bar, sigm), miu_delta)),
+                                               mf.a_tilde(mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha), sigm))
+
+                        coupon_0 = mf.coupon_0(c, L, varpi_tilde, mf.v_star(miu_delta, m_bar, sigm), sigm,
+                                               mf.big_r(mf.v_bar(sigm, mf.v_star(miu_delta, m_bar, sigm),
+                                               mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha),
+                                                                 r, m_bar, miu_delta, c, L,
+                                               mf.omega(r, sigm, mf.v_star(miu_delta, m_bar, sigm)),
+                                               mf.a_tilde(mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha), sigm),
+                                                                 q, alpha),
+                                               mf.big_a_0(delta_0, mf.miu_big_a(r, m_bar, sigm), miu_delta)),
+                                               mf.a_tilde(mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha), sigm))
+
+                        fixedcost_0 = mf.fixedcost_0(q, varpi_tilde, mf.v_star(miu_delta, m_bar, sigm), sigm,
+                                               mf.big_r(mf.v_bar(sigm, mf.v_star(miu_delta, m_bar, sigm),
+                                               mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha),
+                                                                    r, m_bar, miu_delta, c, L,
+                                               mf.omega(r, sigm, mf.v_star(miu_delta, m_bar, sigm)),
+                                               mf.a_tilde(mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha), sigm),
+                                                                    q, alpha),
+                                               mf.big_a_0(delta_0, mf.miu_big_a(r, m_bar, sigm), miu_delta)),
+                                               mf.a_tilde(mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha), sigm))
+
+                        netdebt_0 = mf.netdebt_0(alpha, L, varpi_tilde, mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm),
+                                                                                   alpha), sigm,
+                                               mf.big_r(mf.v_bar(sigm, mf.v_star(miu_delta, m_bar, sigm),
+                                               mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha),
                                                                   r, m_bar, miu_delta, c, L,
-                                                                  mf.omega(r, sigm, mf.v_star(miu_delta, m_bar, sigm)),
-                                                                  mf.small_a_tilde(mf.v_star(miu_delta, m_bar, sigm),
-                                                                                   sigm, alpha), q, alpha),
-                                                         mf.big_a_0(delta_0, mf.miu_big_a(r, m_bar, sigm), miu_delta)),
-                                                mf.small_a_tilde(mf.v_star(miu_delta, m_bar, sigm), sigm, alpha)) +
+                                               mf.omega(r, sigm, mf.v_star(miu_delta, m_bar, sigm)),
+                                               mf.a_tilde(mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha), sigm),
+                                                                  q, alpha),
+                                               mf.big_a_0(delta_0, mf.miu_big_a(r, m_bar, sigm), miu_delta)),
+                                               mf.a_tilde(mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha), sigm))
 
-                                 mf.netdebt_0(alpha, L, mf.var_pi_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha),
-                                              mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha), sigm,
-                                              mf.big_r(mf.v_bar(sigm, mf.v_star(miu_delta, m_bar, sigm),
-                                                                mf.v_tilde(mf.v_star(miu_delta, m_bar, sigm), alpha),
-                                                                r, m_bar, miu_delta, c, L,
-                                                                mf.omega(r, sigm, mf.v_star(miu_delta, m_bar, sigm)),
-                                                                mf.small_a_tilde(mf.v_star(miu_delta, m_bar, sigm),
-                                                                                 sigm, alpha), q, alpha),
-                                                       mf.big_a_0(delta_0, mf.miu_big_a(r, m_bar, sigm), miu_delta)),
-                                              mf.small_a_tilde(mf.v_star(miu_delta, m_bar, sigm), sigm, alpha))))
+                        # print("payout", payout_0, "coupon", coupon_0, "fixed costs", fixedcost_0, "net debt", netdebt_0)
+                        # print(m_bar)
+
+                        return divtax * (cash_0 + payout_0 - coupon_0 - fixedcost_0 + netdebt_0) - eq_obs
 
                     try:
                         mbar = sp.newton(quadratic, x0)
@@ -200,12 +207,27 @@ for i in range(len(keys)):
                         sigma_list.append(sigma)
                         miua = mf.miu_big_a(rf_rate[0], mbar, sigma)
                         miu_a_list.append(miua)
-                        # print function can be enabled for debugging.
-                        # print("Risk Premium for company", k, "is", mbar, "for date", fyear[t])
+
+                        # calculate barrier
+                        vstar = mf.v_star(miudelta, mbar, sigma)
+                        omega = mf.omega(r, sigma, vstar)
+                        vtilde = mf.v_tilde(vstar, alpha)
+                        atilde = mf.a_tilde(vtilde, sigma)
+
+                        vbar = mf.v_bar(sigma, vstar, vtilde, r, mbar, miudelta, c, L, omega, atilde, q, alpha)
+                        vbar_list.append(vbar)
+
                     except RuntimeError:
                         # print("Failed to converge after 50 iterations.", "Attempted calculation for company", k,
                         # "for date", fyear[t])
                         fail_counter += 1
+                        mbar = 99.99
+                        mbar_list.append(mbar)
+                        miudelta_list.append(miudelta)
+                        sigma_list.append(sigma)
+                        miua = mf.miu_big_a(rf_rate[0], mbar, sigma)
+                        miu_a_list.append(miua)
+                        vbar_list.append(99.99)
                         pass
             else:
                 sw_counter += 1
@@ -213,15 +235,15 @@ for i in range(len(keys)):
 
     else:
         correl_counter += 1
-        # print("Firm:", k, "fails the correlation test.", correlation) #for debugging only
+        # print("Firm:", k, "fails the correlation test.", correlation) # for debug
         df = df[~df['ticker'].isin([k])]
 
 print('Completed running the model, writing data to output file.')
 
 keys_count = df.ticker.unique()
 print("Model succesfully ran for", len(keys_count), "firms. Filtering out", len(keys) - len(keys_count), "firms.")
-print(correl_counter, "firms filtered due to correlation,", mean_rev_counter, "firms filtered due to mean reversion.")
-print(sw_counter, "firms filtered due to SW test.")
+print(correl_counter, "firms filtered due to correlation,", mean_rev_counter, "firms filtered due to mean reversion.",
+      sw_counter, "firms filtered due to SW test.")
 print("fails", fail_counter)
 
 mbar_list = pd.Series(mbar_list)
@@ -230,15 +252,17 @@ miudelta_list = pd.Series(miudelta_list)
 miu_a_list = pd.Series(miu_a_list)
 sw_list = pd.Series(sw_list)
 corr_list = pd.Series(corr_list)
+vbar_list = pd.Series(vbar_list)
 
 df['mbar'] = mbar_list.values
 df['sigma'] = sigma_list.values
 df['miu_delta'] = miudelta_list.values
 df['miu_A'] = miu_a_list.values
-# df['Shapiro-Wilk'] = sw_list.values
-# df['Correlation'] = corr_list.values
+df['Shapiro-Wilk'] = sw_list.values
+df['Correlation'] = corr_list.values
+df['vbar'] = vbar_list.values
 
-writer = pd.ExcelWriter(path + "\Model Output\model_output_debt_test.xlsx")
+writer = pd.ExcelWriter(path + "\Model Output\model_output_debt_notfixed.xlsx")
 df.to_excel(writer, sheet_name="Model Output")
 writer.save()
 writer.close()
