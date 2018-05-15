@@ -30,10 +30,6 @@ df = pd.read_csv(path + "\Data\cashflow_data.csv", sep=",",
 
 df['fyear'] = pd.to_datetime(df['fyear'], format="%m%d%Y").apply(lambda x: x.date())
 
-df2 = pd.read_csv(path + "\Data\\na_treasury.csv", sep=';')
-df2['thedate'] = pd.to_datetime(df2['thedate'], format="%Y%m%d")
-df2 = df2.set_index(['thedate'])
-
 print('Data succesfully loaded into dataframe.')
 
 keys = df.ticker.unique()
@@ -80,25 +76,29 @@ miudelta_list = []
 miu_a_list = []
 vbar_list = []
 
-
 # Lists for statistical tests
 sw_list = []
 corr_list = []
 
+# counters for filtering and failures
 mean_rev_counter = 0
 correl_counter = 0
 sw_counter = 0
 fail_counter = 0
 
+# determining risk free rate type
+rf_rate = mf.small_r(rate=1)
+
 for i in range(len(keys)):
     k = keys[i]
+
     # test for correlation between equity and statevar
     correlation = np.corrcoef(equityobs_dict[k], statevar_dict[k])
     correlation = correlation[1].item(0)
 
     if correlation > 0:
-        # if correlation positive do mean reversion test
 
+        # if correlation positive do mean reversion test
         statevar = np.asarray(statevar_dict[k])
         y = (statevar[1:] - statevar[:-1]) / statevar[:-1]
         X = 1 / statevar[:-1]
@@ -108,8 +108,7 @@ for i in range(len(keys)):
 
         if rlm_results.params[0] < 0 and rlm_results.pvalues[0] < 0.05:
             mean_rev_counter += 1
-            # print function can be enabled for debugging.
-            # print("Firm:", k, "fails the mean reversion test.", rlm_results.params[0], rlm_results.pvalues[0])
+            # print("Firm:", k, "fails the meanrev test.", rlm_results.params[0], rlm_results.pvalues[0]) # for debug
             df = df[~df['ticker'].isin([k])]
         else:
             *_, sw = sps.shapiro(statevar_dict[k])
@@ -118,7 +117,7 @@ for i in range(len(keys)):
                     corr_list.append(correlation)
                     sw_list.append(sw)
 
-                miudelta, sigma = mf.sigma_and_miu(k, statevar_dict)
+                miudelta, sigma = mf.sigma_and_miu(k, statevar_dict, fixedmiu=True)
                 sigma_dict.update({k: sigma})
                 miu_delta_dict.update({k: miudelta})
 
@@ -131,14 +130,11 @@ for i in range(len(keys)):
                     liabilities_list = liabilities_dict[k].tolist()
                     equityobserved = equityobs_dict[k].tolist()
                     couponrate = df['couponrate'].tolist()
-
                     fyear = fyear_dict[k].tolist()
-                    dates = date_dict[k].tolist()
-                    rf_rate = df2.iloc[df2.index.get_loc(dates[t], method="nearest")].tolist()
 
                     # Create shorthands used in the function quadratic(m_bar)
                     sigm = sigma_dict[k]
-                    r = rf_rate[0]
+                    r = rf_rate
                     miu_delta = miu_delta_dict[k]
                     c = couponrate[t]
                     L = liabilities_list[t]
@@ -152,37 +148,17 @@ for i in range(len(keys)):
                     def quadratic(m_bar):
 
                         divtax = mf.div_taxrate()
+                        v_star = mf.v_star(miudelta, m_bar, sigm)
+                        omg = mf.omega(r, sigm, v_star)
+                        a = mf.small_a(v_star, sigm)
+                        v_bar = mf.v_bar(sigm, v_star, r, m_bar, miudelta, c, L, omg, a, q)
+                        miu_a = mf.miu_big_a(r, m_bar, sigm)
+                        big_a_0 = mf.big_a_0(delta_0, miu_a, miudelta)
+                        big_r = mf.big_r(v_bar, big_a_0)
 
-                        payout_0 = mf.payout_0(delta_0, r, mf.v_star(miu_delta, m_bar, sigm), sigm,
-                                             mf.big_r(mf.v_bar(sigm, mf.v_star(miu_delta, m_bar, sigm),
-                                                               r, m_bar, miu_delta, c, L,
-                                             mf.omega(r, sigm, mf.v_star(miu_delta, m_bar, sigm)),
-                                             mf.small_a(mf.v_star(miu_delta, m_bar, sigm), sigm), q),
-                                             mf.big_a_0(delta_0, mf.miu_big_a(r, m_bar, sigm), miu_delta)),
-                                             mf.small_a(mf.v_star(miu_delta, m_bar, sigm), sigm))
-
-                        coupon_0 = mf.coupon_0(c, L, varpi,
-                                             mf.v_star(miu_delta, m_bar, sigm), sigm,
-                                             mf.big_r(mf.v_bar(sigm, mf.v_star(miu_delta, m_bar, sigm),
-                                                               r, m_bar, miu_delta, c, L,
-                                             mf.omega(r, sigm, mf.v_star(miu_delta, m_bar, sigm)),
-                                             mf.small_a(mf.v_star(miu_delta, m_bar, sigm), sigm), q),
-                                             mf.big_a_0(delta_0, mf.miu_big_a(r, m_bar, sigm), miu_delta)),
-                                             mf.small_a(mf.v_star(miu_delta, m_bar, sigm), sigm))
-
-                        fixedcost_0 = mf.fixedcost_0(q, varpi, mf.v_star(miu_delta, m_bar, sigm), sigm,
-                                             mf.big_r(mf.v_bar(sigm, mf.v_star(miu_delta, m_bar, sigm),
-                                                                  r, m_bar, miu_delta, c, L,
-                                             mf.omega(r, sigm, mf.v_star(miu_delta, m_bar, sigm)),
-                                             mf.small_a(mf.v_star(miu_delta, m_bar, sigm), sigm), q),
-                                             mf.big_a_0(delta_0, mf.miu_big_a(r, m_bar, sigm), miu_delta)),
-                                             mf.small_a(mf.v_star(miu_delta, m_bar, sigm), sigm))
-
-                        # print("payout", payout_0)
-                        # print("coupon", coupon_0)
-                        # print("fixed costs", fixedcost_0)
-                        # print("equity", eq_obs)
-                        # print("cash", cash_0)
+                        payout_0 = mf.payout_0(delta_0, r, v_star, sigm, big_r, a)
+                        coupon_0 = mf.coupon_0(c, L, varpi, v_star, sigm, big_r, a)
+                        fixedcost_0 = mf.fixedcost_0(q, varpi, v_star, sigm, big_r, a)
 
                         return divtax * (cash_0 + payout_0 - coupon_0 - fixedcost_0) - eq_obs
 
@@ -191,7 +167,7 @@ for i in range(len(keys)):
                         mbar_list.append(mbar)
                         miudelta_list.append(miudelta)
                         sigma_list.append(sigm)
-                        miua = mf.miu_big_a(rf_rate[0], mbar, sigm)
+                        miua = mf.miu_big_a(rf_rate, mbar, sigm)
                         miu_a_list.append(miua)
 
                         # calculate barrier
@@ -203,14 +179,14 @@ for i in range(len(keys)):
                         vbar_list.append(vbar)
 
                     except RuntimeError:
-                        # print("Failed to converge after 50 iterations.", "Attempted calculation for company", k,
-                        # "for date", fyear[t])
+                        print("Failed to converge after 50 iterations.", "Attempted calculation for company", k,
+                              "for date", fyear[t])
                         fail_counter += 1
                         mbar = 99.99
                         mbar_list.append(mbar)
                         miudelta_list.append(miudelta)
                         sigma_list.append(sigm)
-                        miua = mf.miu_big_a(rf_rate[0], mbar, sigm)
+                        miua = mf.miu_big_a(rf_rate, mbar, sigm)
                         miu_a_list.append(miua)
                         vbar_list.append(99.99)
                         pass
@@ -247,10 +223,7 @@ df['Shapiro-Wilk'] = sw_list.values
 df['Correlation'] = corr_list.values
 df['vbar'] = vbar_list.values
 
-writer = pd.ExcelWriter(path + "\Model Output\model_output_nodebt_test2.xlsx")
-df.to_excel(writer, sheet_name="Model Output")
-writer.save()
-writer.close()
+df.to_csv(path + "\Model Output\model_output_10yr_miu.csv", sep=",", index=False)
 
 ########################################################################################################################
 # Stopping the timer

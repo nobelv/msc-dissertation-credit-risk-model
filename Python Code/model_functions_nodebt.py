@@ -39,7 +39,7 @@ def miu_big_a(r, mbar, sigma):
     return float(r) + mbar * sigma
 
 
-def sigma_and_miu(gvkey, statevar_dict):
+def sigma_and_miu(gvkey, statevar_dict, fixedmiu=False):
     """
     Calculates the instantaneous growth rate of the firm, the miu_delta, through a robust linear regression on the
     differences between the log of the state variable. The sigma comes from the standard error of the residuals after
@@ -47,6 +47,7 @@ def sigma_and_miu(gvkey, statevar_dict):
 
     :param gvkey: The gvkey corresponding to the firm.
     :param statevar_dict: The dictionary containing all gvkeys and the state variable values.
+    :param fixedmiu: determines whether to use a fixed value of miu_delta or not.
 
     :return: Returns a tuple containing miu_delta (instantaneous growth rate of the firm) and sigma (robustly weighted
     standard error of the residuals).
@@ -63,8 +64,29 @@ def sigma_and_miu(gvkey, statevar_dict):
 
     sigma_calc = np.std(rlm_results.resid * rlm_results.weights)
     miudelta = rlm_results.params[0] + (0.5 * sigma_calc ** 2)
-
+    if fixedmiu is True:
+        miudelta = 0.04
     return miudelta, sigma_calc
+
+
+def small_r(rate=1):
+    """
+    The average of the risk free rate proxy for the time period of our sample.
+    In this case the options are 10 year and 30 year US treasury yield.
+
+    Where rate=1 specifies the 10 year rate and rate=2 specifies the 30 year rate.
+    By default we use the 10 year rate
+
+    :param rate: Parameter to specify the yield rate to be used in the model.
+
+    :return: The yield for the specified time frame.
+    """
+
+    if rate == 1:
+        r = 0.036362
+    else:
+        r = 0.042914
+    return r
 
 ########################################################################################################################
 # Functions used in the equity and barrier calculation - small_omega var_pi
@@ -95,64 +117,6 @@ def var_pi(r):
     :return: The swapped sign risk free interest rate.
     """
     return -r
-
-########################################################################################################################
-# Auxiliary functions - omega & psi
-########################################################################################################################
-
-
-# Simplifying function to reduce code of omega/g/h/psi funcs by placing the sqrt portion in its own variable
-def d(a, c):
-    return np.sqrt(c ** 2 - 2 * a)
-
-
-# Auxiliary functions found on page 33
-def big_omega_g_plus(a, c):
-    return - (d(a, c) - c) / (2 * d(a, c))
-
-
-def big_omega_g_minus(a, c):
-    return (d(a, c) + c) / (2 * d(a, c))
-
-
-def big_omega_h_plus(a, c):
-    return - (d(a, c) + c) / (2 * d(a, c))
-
-
-def big_omega_h_minus(a, c):
-    return (d(a, c) - c) / (2 * d(a, c))
-
-
-def psi_g_plus(a, c):
-    return - c - (d(a, c))
-
-
-def psi_g_minus(a, c):
-    return c - (d(a, c))
-
-
-def psi_h_plus(a, c):
-    return - c + (d(a, c))
-
-
-def psi_h_minus(a, c):
-    return c + (d(a, c))
-
-
-def g_plus(a, b, c, y):
-    return np.exp(- b * psi_g_plus(a, c) * sp.norm.cdf(((- b - y * d(a, c)) / np.sqrt(y)), loc=0.0, scale=1.0))
-
-
-def g_minus(a, b, c, y):
-    return np.exp(+ b * psi_g_minus(a, c) * sp.norm.cdf(((+ b - y * d(a, c)) / np.sqrt(y)), loc=0.0, scale=1.0))
-
-
-def h_plus(a, b, c, y):
-    return np.exp(- b * psi_h_plus(a, c) * sp.norm.cdf(((- b + y * d(a, c)) / np.sqrt(y)), loc=0.0, scale=1.0))
-
-
-def h_minus(a, b, c, y):
-    return np.exp(+ b * psi_h_minus(a, c) * sp.norm.cdf(((+ b + y * d(a, c)) / np.sqrt(y)), loc=0.0, scale=1.0))
 
 ########################################################################################################################
 # Barrier and Equity functions - v_bar, payout_0, coupon_0, capex_0, effective_taxrate and div0
@@ -444,3 +408,62 @@ def h4(bigr, vbar, vstar, sigma, z, s):
     """
 
     return (np.log(bigr * (vbar / z)) + (vstar + sigma ** 2) * s) / (sigma * np.sqrt(s))
+
+
+########################################################################################################################
+# Auxiliary functions - omega & psi
+########################################################################################################################
+
+# Simplifying function to reduce code of omega/g/h/psi funcs by placing the sqrt portion in its own variable
+def d(a, c):
+    return np.sqrt(c ** 2 - 2 * a)
+
+
+# Auxiliary functions found on page 33
+def big_omega_g_plus(a, c):
+    return - (d(a, c) - c) / (2 * d(a, c))
+
+
+def big_omega_g_minus(a, c):
+    return (d(a, c) + c) / (2 * d(a, c))
+
+
+def big_omega_h_plus(a, c):
+    return - (d(a, c) + c) / (2 * d(a, c))
+
+
+def big_omega_h_minus(a, c):
+    return (d(a, c) - c) / (2 * d(a, c))
+
+
+def psi_g_plus(a, c):
+    return - c - (d(a, c))
+
+
+def psi_g_minus(a, c):
+    return c - (d(a, c))
+
+
+def psi_h_plus(a, c):
+    return - c + (d(a, c))
+
+
+def psi_h_minus(a, c):
+    return c + (d(a, c))
+
+
+def g_plus(a, b, c, y):
+    return np.exp(- b * psi_g_plus(a, c) * sp.norm.cdf(((- b - y * d(a, c)) / np.sqrt(y)), loc=0.0, scale=1.0))
+
+
+def g_minus(a, b, c, y):
+    return np.exp(+ b * psi_g_minus(a, c) * sp.norm.cdf(((+ b - y * d(a, c)) / np.sqrt(y)), loc=0.0, scale=1.0))
+
+
+def h_plus(a, b, c, y):
+    return np.exp(- b * psi_h_plus(a, c) * sp.norm.cdf(((- b + y * d(a, c)) / np.sqrt(y)), loc=0.0, scale=1.0))
+
+
+def h_minus(a, b, c, y):
+    return np.exp(+ b * psi_h_minus(a, c) * sp.norm.cdf(((+ b + y * d(a, c)) / np.sqrt(y)), loc=0.0, scale=1.0))
+
