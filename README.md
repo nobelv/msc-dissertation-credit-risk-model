@@ -1,9 +1,8 @@
-# A Cash Flow based model without jump risk to estimate Risk Premium
+# A cash flow based model to compute a risk pricing indicator (without jump risk).
 
-This is an implementation of the model described in the paper: "A CFO-based model of contingent claims with jump risk" by Nuno Silva, my MSc in Finance dissertation supervisor. 
+This code represents an implementation of the model described in the paper: "A CFO-based model of contingent claims with jump risk" by Nuno Silva, my MSc in Finance dissertation supervisor. There are some modifications compared to the main model, the main difference being that we ommit jump risk.
 
-It is a cash flow based credit risk model that is meant to estimate the risk premium implied in stock data. 
-The model looks backwards in time and is not meant to be predictive in nature.
+In its essence it is a cash flow based credit risk model that is meant to compute an indicator of how risk is priced in the market as implied by stock data. The model looks backwards in time and is not meant to be predictive in nature. I might share the final version of my master thesis here, which provides further clarifcation, upon formal completion of the program.
 
 ## Getting Started
 ### Prerequisites
@@ -11,24 +10,26 @@ The model looks backwards in time and is not meant to be predictive in nature.
 This model was implemented using Python 3.6. 
 It's using the following packages:
 ```
-pandas
-scipy.optimize
-numpy
 statsmodels.api
+scipy.optimize
+scipy.stats
+matplotlib
+seaborn
+pandas
+numpy
 ```
 
 ### Installing & Usage
 
-To run this model you need only four files:
+To run this model you need only three files:
 
 ```
 model_execute.py - to run the model
 model_functions.py - the functions used in the model execution file
-cashflow_based_statevar.csv - csv containing data as input for the model
-na_treasury.csv - csv containing US treasury data as input for the model (10yr rate is used as proxy to risk free)
+cashflow_data.csv - csv containing data as input for the model
 ```
 
-Then just run the model_execute file, making sure that model_functions.py is somewhere so it can be picked up in your PATH variable.
+Then just execute the model_execute script, making sure that model_functions.py is somewhere so it can be picked up in your PATH variable.
 
 ## Authors
 
